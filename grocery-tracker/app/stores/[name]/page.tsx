@@ -1,9 +1,9 @@
 import { redirect, notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import Link from 'next/link';
-import StoreItemsChart from '@/components/stores/store-items-chart';
-import StoreCategoryBreakdown from '@/components/stores/store-category-breakdown';
-import StoreSpendingTrend from '@/components/stores/store-spending-trend';
+// import StoreItemsChart from '@/components/stores/store-items-chart';
+// import StoreCategoryBreakdown from '@/components/stores/store-category-breakdown';
+// import StoreSpendingTrend from '@/components/stores/store-spending-trend';
 
 // Helper function to format date
 function formatDateForDisplay(dateString: string | null): string {
@@ -218,14 +218,14 @@ export default async function StoreDetailPage({
         </div>
 
         {/* Charts */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        {/* <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
           <StoreItemsChart items={topItems} />
           <StoreCategoryBreakdown data={categoryData} />
         </div>
 
         <div className="mb-6">
           <StoreSpendingTrend data={spendingTrend} storeName={storeName} />
-        </div>
+        </div> */}
 
         {/* Recent Receipts */}
         <div className="bg-white rounded-lg shadow p-6">

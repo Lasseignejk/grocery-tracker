@@ -23,6 +23,7 @@ const CATEGORIES = [
   'household',
   'personal-care',
   'other',
+  'pet',
 ];
 
 // Helper function to capitalize first letter of each word
@@ -42,6 +43,8 @@ export default function EditItem({ item }: EditItemProps) {
   const [genericName, setGenericName] = useState(item.generic_name || '');
   const [brand, setBrand] = useState(item.brand || '');
   const [variant, setVariant] = useState(item.variant || '');
+  const [size, setSize] = useState(item.size || '');
+  const [unit, setUnit] = useState(item.unit || '');
   const [quantity, setQuantity] = useState(item.quantity?.toString() || '1');
   const [unitPrice, setUnitPrice] = useState(
     item.unit_price?.toString() || '0'
@@ -70,6 +73,8 @@ export default function EditItem({ item }: EditItemProps) {
           generic_name: genericName.trim() || null,
           brand: brand.trim() || null,
           variant: variant.trim() || null,
+          size: size.trim() || null,
+          unit: unit.trim() || null,
           quantity: parseFloat(quantity) || 1,
           unit_price: parseFloat(unitPrice) || 0,
           total_price: parseFloat(totalPrice) || 0,
@@ -115,6 +120,8 @@ export default function EditItem({ item }: EditItemProps) {
     setGenericName(item.generic_name || '');
     setBrand(item.brand || '');
     setVariant(item.variant || '');
+    setSize(item.size || '');
+    setUnit(item.unit || '');
     setQuantity(item.quantity?.toString() || '1');
     setUnitPrice(item.unit_price?.toString() || '0');
     setTotalPrice(item.total_price?.toString() || '0');
@@ -130,6 +137,13 @@ export default function EditItem({ item }: EditItemProps) {
         <div className="flex-1">
           <div className="flex items-center gap-2 flex-wrap">
             <p className="font-medium">{item.item_name}</p>
+            {(item.size || item.unit) && (
+              <span className="text-xs text-gray-500">
+                ({item.size && item.size}
+                {item.size && item.unit && ' '}
+                {item.unit && item.unit})
+              </span>
+            )}
             {item.brand && (
               <span className="px-2 py-0.5 text-xs bg-blue-100 text-blue-700 rounded">
                 {capitalizeWords(item.brand)}
@@ -286,6 +300,36 @@ export default function EditItem({ item }: EditItemProps) {
             placeholder="e.g., shiitake, brown butter chocolate"
             helpText="Specific variety, flavor, or type"
           />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Size (optional)
+            </label>
+            <input
+              type="text"
+              value={size}
+              onChange={(e) => setSize(e.target.value)}
+              placeholder="e.g., 2, 12, 32"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+            />
+            <p className="text-xs text-gray-500 mt-1">Amount/measurement</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Unit (optional)
+            </label>
+            <input
+              type="text"
+              value={unit}
+              onChange={(e) => setUnit(e.target.value)}
+              placeholder="e.g., liter, oz, lb, count"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+            />
+            <p className="text-xs text-gray-500 mt-1">Unit type</p>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3">

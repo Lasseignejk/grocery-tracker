@@ -41,6 +41,9 @@ export default function Nav({ userEmail }: NavProps) {
                 <Link href="/analytics" className={getLinkClass('/analytics')}>
                   Analytics
                 </Link>
+                <Link href="/stores" className={getLinkClass('/stores')}>
+                  Stores
+                </Link>
               </div>
             )}
           </div>

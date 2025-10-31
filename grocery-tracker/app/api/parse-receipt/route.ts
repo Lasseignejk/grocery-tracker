@@ -80,6 +80,8 @@ CRITICAL: Return ONLY valid JSON with NO comments, NO explanatory text, NO markd
       "brand": "brand name or null",
       "generic_name": "generic product type",
       "variant": "specific variety/flavor or null",
+	  "size": "measurement amount (e.g., '2', '12', '32', '1.5')",
+	  "unit": "unit type (e.g., 'liter', 'oz', 'lb', 'count', 'package')",
       "quantity": number,
       "unit_price": number,
       "total_price": number,
@@ -96,19 +98,30 @@ PARSING GUIDELINES:
 3. **Brand**: Brand name ONLY for branded products (null for produce)
 4. **Generic Name**: Broad category (singular): "miso", "protein bar", "mushroom"
 5. **Variant**: Specific type/flavor: "white", "chocolate peanut butter", "shiitake"
-6. **Prices**: Use the FINAL price paid after all discounts/promotions
-7. **Was On Sale**: true if ANY discount indicator present (SALE, *, promotion text)
-8. **Category**: Choose the most appropriate category
+6. **Size and Unit**: Extract the package size/measurement from the item
+   - Size: The numeric amount ("2", "12", "32", "1.5")
+   - Unit: The unit type ("liter", "oz", "lb", "kg", "count", "package", "bottle", "can", "bag")
+   - Examples:
+     * "Sprite 2L Bottle" → size: "2", unit: "liter"
+     * "Eggs 12ct" → size: "12", unit: "count"
+     * "Bananas 2.5lb" → size: "2.5", unit: "lb"
+     * "Coffee Creamer 32oz" → size: "32", unit: "oz"
+     * "Bread Loaf" → size: "1", unit: "loaf"
+   - If no size is visible, use null for both
+7. **Prices**: Use the FINAL price paid after all discounts/promotions
+8. **Was On Sale**: true if ANY discount indicator present (SALE, *, promotion text)
+9. **Category**: Choose the most appropriate category
 
 CATEGORIES:
 - produce: fruits, vegetables, herbs
 - meat: meat, poultry, seafood, deli
-- dairy: milk, cheese, yogurt, butter, eggs
+- dairy and eggs: milk, cheese, yogurt, butter, eggs
 - bakery: bread, pastries, cakes
 - beverages: soda, juice, coffee, tea, alcohol
 - snacks: chips, candy, cookies, bars
 - household: cleaning, paper products
 - personal-care: soap, shampoo, cosmetics
+- pet: pet food, pet toys
 - other: everything else
 
 CRITICAL RULES:
@@ -140,6 +153,20 @@ EXAMPLE (correct format):
       "was_on_sale": false,
       "category": "other"
     },
+	{
+  "receipt_text": "SPRITE 2L BTL",
+  "item_name": "Sprite 2L Bottle",
+  "brand": "sprite",
+  "generic_name": "soda",
+  "variant": "lemon-lime",
+  "size": "2",
+  "unit": "liter",
+  "quantity": 1,
+  "unit_price": 2.49,
+  "total_price": 2.49,
+  "was_on_sale": false,
+  "category": "beverages"
+},
     {
       "receipt_text": "NV PROTEIN BARS",
       "item_name": "NV Protein Bars",
@@ -242,6 +269,8 @@ EXAMPLE (correct format):
         brand: item.brand || null,
         generic_name: item.generic_name || null,
         variant: item.variant || null,
+        size: item.size || null,
+        unit: item.unit || null,
         quantity: parseFloat(item.quantity) || 1,
         unit_price: parseFloat(item.unit_price) || 0,
         total_price: parseFloat(item.total_price) || 0,

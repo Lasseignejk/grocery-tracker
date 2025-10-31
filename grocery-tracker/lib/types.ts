@@ -22,5 +22,7 @@ export interface ReceiptItem {
   brand: string | null;
   generic_name: string | null;
   variant: string | null;
+  size: string | null;
+  unit: string | null;
   created_at: string;
 }
