@@ -7,6 +7,7 @@ import SpendingByStore from '@/components/analytics/spending-by-store';
 import SpendingByCategory from '@/components/analytics/spending-by-category';
 import SpendingOverTime from '@/components/analytics/spending-over-time';
 import TopItemsGrouped from '@/components/analytics/top-items-grouped';
+import Nav from '@/components/layout/nav';
 
 export default async function AnalyticsPage() {
   const supabase = await createClient();
@@ -235,33 +236,7 @@ export default async function AnalyticsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center gap-6">
-              <h1 className="text-xl font-bold">Receipt Tracker</h1>
-              <div className="flex gap-4">
-                <Link
-                  href="/dashboard"
-                  className="text-gray-600 hover:text-gray-900 transition-colors"
-                >
-                  Receipts
-                </Link>
-                <Link
-                  href="/analytics"
-                  className="text-blue-600 font-medium border-b-2 border-blue-600"
-                >
-                  Analytics
-                </Link>
-              </div>
-            </div>
-            <div className="flex items-center gap-4">
-              <span className="text-sm text-gray-600">{user.email}</span>
-              <LogoutButton />
-            </div>
-          </div>
-        </div>
-      </nav>
+      <Nav userEmail={user.email!} />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-6">

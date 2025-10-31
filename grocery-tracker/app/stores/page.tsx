@@ -21,10 +21,7 @@ export default async function StoresPage() {
     .eq('user_id', user.id);
 
   // Get stores with logos
-  const { data: stores } = await supabase
-    .from('stores')
-    .select('*')
-    .eq('user_id', user.id);
+  const { data: stores } = await supabase.from('stores').select('*');
 
   // Calculate stats per store
   const storeStats = receipts

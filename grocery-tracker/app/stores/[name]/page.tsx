@@ -58,7 +58,6 @@ export default async function StoreDetailPage({
   const { data: store } = await supabase
     .from('stores')
     .select('*')
-    .eq('user_id', user.id)
     .ilike('name', storeName)
     .single();
 
