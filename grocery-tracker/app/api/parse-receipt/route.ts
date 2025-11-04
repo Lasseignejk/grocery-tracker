@@ -80,8 +80,8 @@ CRITICAL: Return ONLY valid JSON with NO comments, NO explanatory text, NO markd
       "brand": "brand name or null",
       "generic_name": "generic product type",
       "variant": "specific variety/flavor or null",
-	  "size": "measurement amount (e.g., '2', '12', '32', '1.5')",
-	  "unit": "unit type (e.g., 'liter', 'oz', 'lb', 'count', 'package')",
+      "size": "measurement amount (e.g., '2', '12', '32', '1.5')",
+      "unit": "unit type (e.g., 'liter', 'oz', 'lb', 'kg', 'count', 'package')",
       "quantity": number,
       "unit_price": number,
       "total_price": number,
@@ -98,16 +98,10 @@ PARSING GUIDELINES:
 3. **Brand**: Brand name ONLY for branded products (null for produce)
 4. **Generic Name**: Broad category (singular): "miso", "protein bar", "mushroom"
 5. **Variant**: Specific type/flavor: "white", "chocolate peanut butter", "shiitake"
-6. **Size and Unit**: Extract the package size/measurement from the item
+6. **Size and Unit**: Extract package size/measurement
    - Size: The numeric amount ("2", "12", "32", "1.5")
    - Unit: The unit type ("liter", "oz", "lb", "kg", "count", "package", "bottle", "can", "bag")
-   - Examples:
-     * "Sprite 2L Bottle" → size: "2", unit: "liter"
-     * "Eggs 12ct" → size: "12", unit: "count"
-     * "Bananas 2.5lb" → size: "2.5", unit: "lb"
-     * "Coffee Creamer 32oz" → size: "32", unit: "oz"
-     * "Bread Loaf" → size: "1", unit: "loaf"
-   - If no size is visible, use null for both
+   - If no size visible, use null for both
 7. **Prices**: Use the FINAL price paid after all discounts/promotions
 8. **Was On Sale**: true if ANY discount indicator present (SALE, *, promotion text)
 9. **Category**: Choose the most appropriate category
@@ -121,7 +115,6 @@ CATEGORIES:
 - snacks: chips, candy, cookies, bars
 - household: cleaning, paper products
 - personal-care: soap, shampoo, cosmetics
-- pet: pet food, pet toys
 - other: everything else
 
 CRITICAL RULES:
@@ -134,6 +127,7 @@ CRITICAL RULES:
 - Use false for missing boolean values
 - All text fields (brand, generic_name, variant) should be lowercase
 - receipt_text preserves original casing
+- Extract ALL items from the receipt - do not truncate
 
 EXAMPLE (correct format):
 {
@@ -147,37 +141,13 @@ EXAMPLE (correct format):
       "brand": "hikari",
       "generic_name": "miso",
       "variant": "white",
+      "size": null,
+      "unit": null,
       "quantity": 1,
       "unit_price": 10.49,
       "total_price": 10.49,
       "was_on_sale": false,
       "category": "other"
-    },
-	{
-  "receipt_text": "SPRITE 2L BTL",
-  "item_name": "Sprite 2L Bottle",
-  "brand": "sprite",
-  "generic_name": "soda",
-  "variant": "lemon-lime",
-  "size": "2",
-  "unit": "liter",
-  "quantity": 1,
-  "unit_price": 2.49,
-  "total_price": 2.49,
-  "was_on_sale": false,
-  "category": "beverages"
-},
-    {
-      "receipt_text": "NV PROTEIN BARS",
-      "item_name": "NV Protein Bars",
-      "brand": "nv",
-      "generic_name": "protein bar",
-      "variant": null,
-      "quantity": 1,
-      "unit_price": 6.19,
-      "total_price": 3.09,
-      "was_on_sale": true,
-      "category": "snacks"
     }
   ]
 }`,
@@ -191,11 +161,26 @@ EXAMPLE (correct format):
           ],
         },
       ],
-      max_tokens: 2000,
+      max_tokens: 4096, // ✅ Increased from 2000
       temperature: 0,
     });
 
     const content = response.choices[0].message.content;
+
+    // Check if response was truncated
+    const finishReason = response.choices[0].finish_reason;
+    if (finishReason === 'length') {
+      console.error('Response was truncated due to token limit');
+      return NextResponse.json(
+        {
+          error:
+            'Receipt too long - parsing was incomplete. The receipt has too many items to process in one go. Try taking a clearer photo with fewer items visible, or manually add the remaining items.',
+          truncated: true,
+        },
+        { status: 400 }
+      );
+    }
+
     if (!content) {
       return NextResponse.json(
         { error: 'No response from AI' },
@@ -213,20 +198,35 @@ EXAMPLE (correct format):
         .trim();
 
       // Remove any comments (// or /* */)
-      cleanContent = cleanContent.replace(/\/\/.*$/gm, ''); // Remove // comments
-      cleanContent = cleanContent.replace(/\/\*[\s\S]*?\*\//g, ''); // Remove /* */ comments
+      cleanContent = cleanContent.replace(/\/\/.*$/gm, '');
+      cleanContent = cleanContent.replace(/\/\*[\s\S]*?\*\//g, '');
 
-      // Remove trailing commas before closing braces/brackets (common JSON error)
+      // Remove trailing commas before closing braces/brackets
       cleanContent = cleanContent.replace(/,(\s*[}\]])/g, '$1');
 
       parsedData = JSON.parse(cleanContent);
     } catch (e) {
       console.error('Failed to parse AI response:', content);
       console.error('Parse error:', e);
+
+      // Check if it looks like truncated JSON
+      if (content.includes('"items":') && !content.trim().endsWith('}')) {
+        return NextResponse.json(
+          {
+            error:
+              'Receipt parsing was incomplete - response appears truncated. The receipt may be too long. Try re-parsing or manually add missing items.',
+            details:
+              'JSON parsing failed - response was likely cut off mid-stream',
+            truncated: true,
+          },
+          { status: 400 }
+        );
+      }
+
       return NextResponse.json(
         {
           error: 'Failed to parse AI response. The AI returned invalid JSON.',
-          details: content.substring(0, 500), // Return first 500 chars for debugging
+          details: content.substring(0, 500),
         },
         { status: 500 }
       );
@@ -237,6 +237,17 @@ EXAMPLE (correct format):
       return NextResponse.json(
         { error: 'Invalid response structure: missing items array' },
         { status: 500 }
+      );
+    }
+
+    // Check if items array is empty or suspiciously small
+    if (parsedData.items.length === 0) {
+      return NextResponse.json(
+        {
+          error:
+            'No items were extracted from the receipt. The image may be unclear or the AI could not read it.',
+        },
+        { status: 400 }
       );
     }
 
@@ -294,7 +305,7 @@ EXAMPLE (correct format):
     return NextResponse.json({
       success: true,
       data: parsedData,
-      message: 'Receipt parsed successfully',
+      message: `Receipt parsed successfully - ${parsedData.items.length} items extracted`,
     });
   } catch (error: any) {
     console.error('Error parsing receipt:', error);
