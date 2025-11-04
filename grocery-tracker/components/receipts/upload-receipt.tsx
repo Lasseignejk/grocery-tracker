@@ -46,6 +46,9 @@ export default function UploadReceipt() {
     setUploading(true);
     setError(null);
 
+    let receiptId: string | null = null;
+    let uploadedFilePath: string | null = null;
+
     try {
       // Get current user
       const {
@@ -60,6 +63,7 @@ export default function UploadReceipt() {
       // Create unique filename
       const fileExt = file.name.split('.').pop();
       const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+      uploadedFilePath = fileName;
 
       // Upload to Supabase Storage
       const { data: uploadData, error: uploadError } = await supabase.storage
@@ -73,13 +77,13 @@ export default function UploadReceipt() {
         data: { publicUrl },
       } = supabase.storage.from('receipt-images').getPublicUrl(fileName);
 
-      // Create receipt record in database
+      // Create receipt record WITHOUT store_name (to prevent "Processing..." from being created)
       const { data: receiptData, error: dbError } = await supabase
         .from('receipts')
         .insert({
           user_id: user.id,
           image_url: publicUrl,
-          store_name: 'Processing...',
+          store_name: null, // ✅ Changed from "Processing..."
           purchase_date: new Date().toISOString().split('T')[0],
           total_amount: 0,
         })
@@ -87,6 +91,8 @@ export default function UploadReceipt() {
         .single();
 
       if (dbError) throw dbError;
+
+      receiptId = receiptData.id;
 
       setUploading(false);
       setParsing(true);
@@ -102,12 +108,26 @@ export default function UploadReceipt() {
         }),
       });
 
+      const parseResult = await parseResponse.json();
+
       if (!parseResponse.ok) {
-        const errorData = await parseResponse.json();
-        throw new Error(errorData.error || 'Failed to parse receipt');
+        // Parsing failed - clean up the receipt record
+        console.error('Parsing failed:', parseResult.error);
+
+        // Delete the receipt record
+        await supabase.from('receipts').delete().eq('id', receiptData.id);
+
+        // Delete the uploaded image
+        if (uploadedFilePath) {
+          await supabase.storage
+            .from('receipt-images')
+            .remove([uploadedFilePath]);
+        }
+
+        throw new Error(parseResult.error || 'Failed to parse receipt');
       }
 
-      // Reset form
+      // Success!
       setFile(null);
       setPreview(null);
       setParsing(false);
@@ -118,6 +138,20 @@ export default function UploadReceipt() {
       setError(err.message);
       setUploading(false);
       setParsing(false);
+
+      // If we have a receiptId but parsing failed, try to clean up
+      if (receiptId) {
+        try {
+          await supabase.from('receipts').delete().eq('id', receiptId);
+          if (uploadedFilePath) {
+            await supabase.storage
+              .from('receipt-images')
+              .remove([uploadedFilePath]);
+          }
+        } catch (cleanupError) {
+          console.error('Failed to clean up after error:', cleanupError);
+        }
+      }
     }
   };
 
@@ -215,7 +249,12 @@ export default function UploadReceipt() {
       {/* Error Message */}
       {error && (
         <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-lg text-sm">
-          {error}
+          <p className="font-medium mb-1">Failed to process receipt</p>
+          <p>{error}</p>
+          <p className="mt-2 text-xs">
+            The receipt image and data have been removed. You can try uploading
+            again.
+          </p>
         </div>
       )}
 
