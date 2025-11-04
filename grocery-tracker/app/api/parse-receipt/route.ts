@@ -115,6 +115,7 @@ CATEGORIES:
 - snacks: chips, candy, cookies, bars
 - household: cleaning, paper products
 - personal-care: soap, shampoo, cosmetics
+- pet: pet food, pet toys
 - other: everything else
 
 CRITICAL RULES:
