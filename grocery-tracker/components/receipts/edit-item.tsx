@@ -13,17 +13,19 @@ interface EditItemProps {
 }
 
 const CATEGORIES = [
-  'produce',
-  'meat',
-  'frozen',
-  'dairy',
   'bakery',
   'beverages',
-  'snacks',
+  'bread',
+  'cans',
+  'dairy and eggs',
+  'frozen',
   'household',
+  'meat',
   'personal-care',
-  'other',
   'pet',
+  'produce',
+  'snacks',
+  'other',
 ];
 
 // Helper function to capitalize first letter of each word

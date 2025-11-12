@@ -107,15 +107,18 @@ PARSING GUIDELINES:
 9. **Category**: Choose the most appropriate category
 
 CATEGORIES:
-- produce: fruits, vegetables, herbs
-- meat: meat, poultry, seafood, deli
-- dairy and eggs: milk, cheese, yogurt, butter, eggs
-- bakery: bread, pastries, cakes
+- bakery: pastries, cakes, cookies
 - beverages: soda, juice, coffee, tea, alcohol
-- snacks: chips, candy, cookies, bars
+- bread: bread, bagels
+- cans: diced tomatoes, white beans
+- dairy and eggs: milk, cheese, yogurt, butter, eggs
+- frozen: pizza, steamed vegetables
 - household: cleaning, paper products
+- meat: meat, poultry, seafood, deli
 - personal-care: soap, shampoo, cosmetics
 - pet: pet food, pet toys
+- produce: fruits, vegetables, herbs
+- snacks: chips, candy, cookies, bars
 - other: everything else
 
 CRITICAL RULES:
