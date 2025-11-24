@@ -1,13 +1,12 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import Link from 'next/link';
-import LogoutButton from '@/components/auth/logout-button';
 import SummaryStats from '@/components/analytics/summary-stats';
 import SpendingByStore from '@/components/analytics/spending-by-store';
 import SpendingByCategory from '@/components/analytics/spending-by-category';
 import SpendingOverTime from '@/components/analytics/spending-over-time';
 import TopItemsGrouped from '@/components/analytics/top-items-grouped';
 import Nav from '@/components/layout/nav';
+import { isAdmin } from '@/lib/auth';
 
 export default async function AnalyticsPage() {
   const supabase = await createClient();
@@ -19,6 +18,8 @@ export default async function AnalyticsPage() {
   if (!user) {
     redirect('/login');
   }
+
+  const userIsAdmin = await isAdmin(user.id);
 
   // Get all receipts
   const { data: receipts } = await supabase
@@ -236,7 +237,7 @@ export default async function AnalyticsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Nav userEmail={user.email!} />
+      <Nav userEmail={user.email || ''} isAdmin={userIsAdmin} />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-6">

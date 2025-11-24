@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client';
 export default function ParseButton({ receiptId }: { receiptId: string }) {
   const [parsing, setParsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const [hasItems, setHasItems] = useState(false);
   const router = useRouter();
   const supabase = createClient();
@@ -38,6 +39,7 @@ export default function ParseButton({ receiptId }: { receiptId: string }) {
 
     setParsing(true);
     setError(null);
+    setWarning(null);
 
     try {
       const response = await fetch('/api/parse-receipt', {
@@ -48,9 +50,15 @@ export default function ParseButton({ receiptId }: { receiptId: string }) {
         body: JSON.stringify({ receiptId }),
       });
 
+      const result = await response.json();
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to parse receipt');
+        throw new Error(result.error || 'Failed to parse receipt');
+      }
+
+      // Check if parsing was truncated
+      if (result.truncated && result.warning) {
+        setWarning(result.warning);
       }
 
       router.refresh();
@@ -74,8 +82,24 @@ export default function ParseButton({ receiptId }: { receiptId: string }) {
           ? 'Re-parse Receipt with AI'
           : 'Parse Receipt with AI'}
       </button>
+
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
-      {hasItems && !parsing && (
+
+      {warning && (
+        <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+          <div className="flex gap-2">
+            <span className="text-amber-600">⚠️</span>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-amber-900">
+                Partial Parse
+              </p>
+              <p className="text-sm text-amber-800 mt-1">{warning}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {hasItems && !parsing && !warning && (
         <p className="mt-2 text-xs text-amber-600">
           ⚠️ Re-parsing will replace all existing items
         </p>

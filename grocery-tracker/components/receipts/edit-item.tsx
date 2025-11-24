@@ -235,6 +235,15 @@ export default function EditItem({ item }: EditItemProps) {
             onClose={() => setShowLinkDialog(false)}
           />
         )}
+        {item.receipt_text &&
+          (item.generic_name || item.brand || item.size) && (
+            <span
+              className="px-2 py-0.5 text-xs bg-emerald-100 text-emerald-700 rounded"
+              title="Some fields were auto-filled from previous purchases"
+            >
+              ✓ Matched
+            </span>
+          )}
       </div>
     );
   }

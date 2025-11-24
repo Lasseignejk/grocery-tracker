@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import Link from 'next/link';
 import LogoutButton from '@/components/auth/logout-button';
 import PriceComparison from '@/components/stores/price-comparison';
+import { isAdmin } from '@/lib/auth';
 import Nav from '@/components/layout/nav';
 
 export default async function StoresPage() {
@@ -15,6 +16,8 @@ export default async function StoresPage() {
   if (!user) {
     redirect('/login');
   }
+
+  const userIsAdmin = await isAdmin(user.id);
 
   // Get all receipts grouped by store
   const { data: receipts } = await supabase
@@ -147,7 +150,7 @@ export default async function StoresPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Nav userEmail={user.email!} />
+      <Nav userEmail={user.email || ''} isAdmin={userIsAdmin} />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-6">

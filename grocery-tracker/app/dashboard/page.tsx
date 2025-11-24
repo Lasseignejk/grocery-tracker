@@ -1,7 +1,6 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import Link from 'next/link';
-import LogoutButton from '@/components/auth/logout-button';
+import { isAdmin } from '@/lib/auth';
 import UploadReceipt from '@/components/receipts/upload-receipt';
 import ReceiptList from '@/components/receipts/receipt-list';
 import Nav from '@/components/layout/nav';
@@ -16,10 +15,11 @@ export default async function DashboardPage() {
   if (!user) {
     redirect('/login');
   }
+  const userIsAdmin = await isAdmin(user.id);
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Nav userEmail={user.email!} />
+      <Nav userEmail={user.email || ''} isAdmin={userIsAdmin} />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

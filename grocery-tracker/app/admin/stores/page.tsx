@@ -4,6 +4,7 @@ import Link from 'next/link';
 import LogoutButton from '@/components/auth/logout-button';
 import StoreLogoUpload from '@/components/admin/store-logo-upload';
 import Nav from '@/components/layout/nav';
+import { isAdmin } from '@/lib/auth';
 
 export default async function AdminStoresPage() {
   const supabase = await createClient();
@@ -16,6 +17,11 @@ export default async function AdminStoresPage() {
     redirect('/login');
   }
 
+  // Check admin and pass true to Nav (we know they're admin if they got here)
+  if (!(await isAdmin(user.id))) {
+    redirect('/dashboard');
+  }
+
   // Get all stores
   const { data: stores } = await supabase
     .from('stores')
@@ -24,7 +30,7 @@ export default async function AdminStoresPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Nav userEmail={user.email!} />
+      <Nav userEmail={user.email || ''} isAdmin={true} />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-6">
