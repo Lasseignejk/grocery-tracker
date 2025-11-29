@@ -96,7 +96,7 @@ CRITICAL: Return ONLY valid JSON with NO comments, NO explanatory text, NO markd
   "total_amount": number,
   "items": [
     {
-      "receipt_text": "EXACT text as it appears on the receipt",
+      "receipt_text": "EXACT text as it appears on the receipt. Do not include price or item numbers",
       "item_name": "full descriptive name including size/package",
       "brand": "brand name or null",
       "generic_name": "generic product type",
