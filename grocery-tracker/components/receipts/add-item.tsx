@@ -11,14 +11,18 @@ interface AddItemProps {
 }
 
 const CATEGORIES = [
-  'produce',
-  'meat',
-  'dairy',
   'bakery',
   'beverages',
-  'snacks',
+  'bread',
+  'cans',
+  'dairy and eggs',
+  'frozen',
   'household',
+  'meat',
   'personal-care',
+  'pet',
+  'produce',
+  'snacks',
   'other',
 ];
 
