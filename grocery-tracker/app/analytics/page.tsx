@@ -136,15 +136,18 @@ export default async function AnalyticsPage() {
             if (!acc[brand]) {
               acc[brand] = {
                 total_spent: 0,
+                total_quantity: 0,
                 purchase_count: 0,
                 items: [] as Array<{
                   item_name: string;
                   total_spent: number;
+                  total_quantity: number;
                   purchase_count: number;
                 }>,
               };
             }
             acc[brand].total_spent += item.total_price || 0;
+            acc[brand].total_quantity += item.quantity || 1;
             acc[brand].purchase_count += 1;
 
             // Track individual items within brand
@@ -153,11 +156,13 @@ export default async function AnalyticsPage() {
             );
             if (existingItem) {
               existingItem.total_spent += item.total_price || 0;
+              existingItem.total_quantity += item.quantity || 1;
               existingItem.purchase_count += 1;
             } else {
               acc[brand].items.push({
                 item_name: item.item_name,
                 total_spent: item.total_price || 0,
+                total_quantity: item.quantity || 1,
                 purchase_count: 1,
               });
             }
@@ -169,7 +174,7 @@ export default async function AnalyticsPage() {
           grouping_field: 'brand' as const,
           ...data,
         }))
-        .sort((a, b) => b.purchase_count - a.purchase_count)
+        .sort((a, b) => b.total_quantity - a.total_quantity)
     : [];
 
   // Group items by generic name
@@ -182,15 +187,18 @@ export default async function AnalyticsPage() {
             if (!acc[generic]) {
               acc[generic] = {
                 total_spent: 0,
+                total_quantity: 0,
                 purchase_count: 0,
                 items: [] as Array<{
                   item_name: string;
+                  total_quantity: number;
                   total_spent: number;
                   purchase_count: number;
                 }>,
               };
             }
             acc[generic].total_spent += item.total_price || 0;
+            acc[generic].total_quantity += item.quantity || 1;
             acc[generic].purchase_count += 1;
 
             // Track individual items within generic name
@@ -199,23 +207,25 @@ export default async function AnalyticsPage() {
             );
             if (existingItem) {
               existingItem.total_spent += item.total_price || 0;
+              existingItem.total_quantity += item.quantity || 1;
               existingItem.purchase_count += 1;
             } else {
               acc[generic].items.push({
                 item_name: item.item_name,
                 total_spent: item.total_price || 0,
+                total_quantity: item.quantity || 1,
                 purchase_count: 1,
               });
             }
             return acc;
-          }, {} as Record<string, { total_spent: number; purchase_count: number; items: Array<{ item_name: string; total_spent: number; purchase_count: number }> }>)
+          }, {} as Record<string, { total_spent: number; total_quantity: number; purchase_count: number; items: Array<{ item_name: string; total_spent: number; total_quantity: number; purchase_count: number }> }>)
       )
         .map(([display_name, data]) => ({
           display_name,
           grouping_field: 'generic_name' as const,
           ...data,
         }))
-        .sort((a, b) => b.purchase_count - a.purchase_count)
+        .sort((a, b) => b.total_quantity - a.total_quantity)
     : [];
 
   // Ungrouped items (no brand or generic name)
@@ -224,15 +234,20 @@ export default async function AnalyticsPage() {
         items.reduce((acc, item) => {
           const name = item.item_name;
           if (!acc[name]) {
-            acc[name] = { total_spent: 0, purchase_count: 0 };
+            acc[name] = {
+              total_spent: 0,
+              total_quantity: 0,
+              purchase_count: 0,
+            };
           }
           acc[name].total_spent += item.total_price || 0;
+          acc[name].total_quantity += item.quantity || 1;
           acc[name].purchase_count += 1;
           return acc;
-        }, {} as Record<string, { total_spent: number; purchase_count: number }>)
+        }, {} as Record<string, { total_spent: number; total_quantity: number; purchase_count: number }>)
       )
         .map(([item_name, data]) => ({ display_name: item_name, ...data }))
-        .sort((a, b) => b.purchase_count - a.purchase_count)
+        .sort((a, b) => b.total_quantity - a.total_quantity)
     : [];
 
   return (

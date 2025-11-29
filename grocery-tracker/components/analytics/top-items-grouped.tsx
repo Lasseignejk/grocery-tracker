@@ -6,10 +6,12 @@ interface GroupedItem {
   display_name: string;
   grouping_field: 'brand' | 'generic_name';
   total_spent: number;
+  total_quantity: number; // ✅ NEW
   purchase_count: number;
   items: Array<{
     item_name: string;
     total_spent: number;
+    total_quantity: number; // ✅ NEW
     purchase_count: number;
   }>;
 }
@@ -20,6 +22,7 @@ interface TopItemsGroupedProps {
   ungroupedItems: Array<{
     item_name: string;
     total_spent: number;
+    total_quantity: number; // ✅ NEW
     purchase_count: number;
   }>;
 }
@@ -46,10 +49,12 @@ export default function TopItemsGrouped({
   let displayData: Array<{
     display_name: string;
     total_spent: number;
+    total_quantity: number; // ✅ NEW
     purchase_count: number;
     items?: Array<{
       item_name: string;
       total_spent: number;
+      total_quantity: number; // ✅ NEW
       purchase_count: number;
     }>;
   }> = [];
@@ -119,8 +124,11 @@ export default function TopItemsGrouped({
                     {capitalizeWords(item.display_name)}
                   </p>
                   <p className="text-sm text-gray-500">
-                    Purchased {item.purchase_count} time
-                    {item.purchase_count !== 1 ? 's' : ''}
+                    {/* ✅ Show quantity instead of just purchase count */}
+                    Bought {item.total_quantity} total
+                    {item.purchase_count > 1 && (
+                      <span> ({item.purchase_count} times)</span>
+                    )}
                     {item.items && item.items.length > 1 && (
                       <span className="ml-2 text-xs text-blue-600">
                         ({item.items.length} variants)
@@ -161,23 +169,28 @@ export default function TopItemsGrouped({
             {/* Expanded breakdown */}
             {expandedItem === item.display_name && item.items && (
               <div className="ml-11 mt-2 space-y-1">
-                {item.items.map((subItem) => (
-                  <div
-                    key={subItem.item_name}
-                    className="flex justify-between items-center p-2 bg-blue-50 rounded text-sm"
-                  >
-                    <div>
-                      <p className="text-gray-700">{subItem.item_name}</p>
-                      <p className="text-xs text-gray-500">
-                        {subItem.purchase_count} time
-                        {subItem.purchase_count !== 1 ? 's' : ''}
+                {item.items
+                  .sort((a, b) => b.total_quantity - a.total_quantity) // ✅ Sort by quantity
+                  .map((subItem) => (
+                    <div
+                      key={subItem.item_name}
+                      className="flex justify-between items-center p-2 bg-blue-50 rounded text-sm"
+                    >
+                      <div>
+                        <p className="text-gray-700">{subItem.item_name}</p>
+                        <p className="text-xs text-gray-500">
+                          {/* ✅ Show quantity */}
+                          Bought {subItem.total_quantity} total
+                          {subItem.purchase_count > 1 && (
+                            <span> ({subItem.purchase_count} times)</span>
+                          )}
+                        </p>
+                      </div>
+                      <p className="font-medium text-gray-700">
+                        ${subItem.total_spent.toFixed(2)}
                       </p>
                     </div>
-                    <p className="font-medium text-gray-700">
-                      ${subItem.total_spent.toFixed(2)}
-                    </p>
-                  </div>
-                ))}
+                  ))}
               </div>
             )}
           </div>
