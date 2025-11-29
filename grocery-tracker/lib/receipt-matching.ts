@@ -5,6 +5,7 @@ interface MatchCandidate {
   size: string | null;
   unit: string | null;
   category: string | null;
+  receipt_text: string | null;
 }
 
 interface ParsedItem {
@@ -87,7 +88,12 @@ export function findBestMatch(
 
   for (const item of historicalItems) {
     // We need something to compare against - use generic_name or brand
-    const compareText = item.generic_name || item.brand || item.variant || '';
+    const compareText =
+      item.receipt_text ||
+      item.generic_name ||
+      item.brand ||
+      item.variant ||
+      '';
 
     if (!compareText) continue;
 
@@ -97,6 +103,9 @@ export function findBestMatch(
     if (score > bestScore && score >= 0.7) {
       bestScore = score;
       bestMatch = item;
+      console.log(
+        `Receipt text: ${receiptText}, score: ${score * 100}% item: ${item}`
+      );
     }
   }
 
@@ -126,6 +135,7 @@ export function enhanceWithMatches(
     const match = findBestMatch(item.receipt_text, historicalItems);
 
     if (!match) {
+      console.log(`No match found for ${item.receipt_text}`);
       return item;
     }
 
@@ -133,13 +143,14 @@ export function enhanceWithMatches(
     const willEnhance =
       (!item.generic_name && match.generic_name) ||
       (!item.brand && match.brand) ||
-      (!item.variant && match.variant) ||
       (!item.size && match.size) ||
       (!item.unit && match.unit) ||
       (!item.category && match.category);
 
     if (willEnhance) {
+      console.log(`Will enhance!`);
       enhancedCount++;
+      console.log(`Enhanced count is now: ${enhancedCount}`);
     }
 
     // Merge matched data with parsed data (prefer parsed data when available)
@@ -147,7 +158,6 @@ export function enhanceWithMatches(
       ...item,
       generic_name: item.generic_name || match.generic_name,
       brand: item.brand || match.brand,
-      variant: item.variant || match.variant,
       size: item.size || match.size,
       unit: item.unit || match.unit,
       category: item.category || match.category,
