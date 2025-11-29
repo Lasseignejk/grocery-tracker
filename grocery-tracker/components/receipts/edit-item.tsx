@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { ReceiptItem } from '@/lib/types';
 import { useItemSuggestions } from '@/lib/hooks/use-item-suggestions';
 import AutocompleteInput from '@/components/ui/autocomplete-input';
-import LinkItemsDialog from './link-items-dialog';
+// import LinkItemsDialog from './link-items-dialog';
 
 interface EditItemProps {
   item: ReceiptItem;
@@ -187,7 +187,7 @@ export default function EditItem({ item }: EditItemProps) {
           <p className="font-semibold text-lg">
             ${item.total_price?.toFixed(2) || '0.00'}
           </p>
-          <button
+          {/* <button
             onClick={() => setShowLinkDialog(true)}
             className="opacity-0 group-hover:opacity-100 p-2 text-purple-600 hover:bg-purple-50 rounded transition-all"
             title="Link to product"
@@ -205,7 +205,7 @@ export default function EditItem({ item }: EditItemProps) {
                 d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
               />
             </svg>
-          </button>
+          </button> */}
           <button
             onClick={() => setIsEditing(true)}
             className="opacity-0 group-hover:opacity-100 p-2 text-blue-600 hover:bg-blue-50 rounded transition-all"
@@ -226,7 +226,7 @@ export default function EditItem({ item }: EditItemProps) {
             </svg>
           </button>
         </div>
-        {showLinkDialog && (
+        {/* {showLinkDialog && (
           <LinkItemsDialog
             itemId={item.id}
             itemName={item.item_name}
@@ -234,7 +234,7 @@ export default function EditItem({ item }: EditItemProps) {
             genericName={item.generic_name}
             onClose={() => setShowLinkDialog(false)}
           />
-        )}
+        )} */}
         {/* {item.receipt_text &&
           (item.generic_name || item.brand || item.size) && (
             <span
