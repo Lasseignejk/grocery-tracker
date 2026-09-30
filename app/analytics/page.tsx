@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { fetchAll } from '@/lib/supabase/fetch-all';
 import SummaryStats from '@/components/analytics/summary-stats';
 import SpendingByStore from '@/components/analytics/spending-by-store';
 import SpendingByCategory from '@/components/analytics/spending-by-category';
@@ -22,16 +23,24 @@ export default async function AnalyticsPage() {
   const userIsAdmin = await isAdmin(user.id);
 
   // Get all receipts
-  const { data: receipts } = await supabase
-    .from('receipts')
-    .select('*')
-    .eq('user_id', user.id);
+  const receipts = await fetchAll((from, to) =>
+    supabase
+      .from('receipts')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('id')
+      .range(from, to)
+  );
 
   // Get all items
-  const { data: items } = await supabase
-    .from('receipt_items')
-    .select('*, receipts!inner(user_id)')
-    .eq('receipts.user_id', user.id);
+  const items = await fetchAll((from, to) =>
+    supabase
+      .from('receipt_items')
+      .select('*, receipts!inner(user_id)')
+      .eq('receipts.user_id', user.id)
+      .order('id')
+      .range(from, to)
+  );
 
   // Calculate summary stats
   const totalSpent =

@@ -1,5 +1,6 @@
 import { redirect, notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { fetchAll } from '@/lib/supabase/fetch-all';
 import Link from 'next/link';
 import StoreItemsChart from '@/components/stores/store-items-chart';
 import StoreCategoryBreakdown from '@/components/stores/store-category-breakdown';
@@ -49,10 +50,14 @@ export default async function StoreDetailPage({
 
   // Get all items from this store
   const receiptIds = receipts.map((r) => r.id);
-  const { data: items } = await supabase
-    .from('receipt_items')
-    .select('*')
-    .in('receipt_id', receiptIds);
+  const items = await fetchAll((from, to) =>
+    supabase
+      .from('receipt_items')
+      .select('*')
+      .in('receipt_id', receiptIds)
+      .order('id')
+      .range(from, to)
+  );
 
   // Get store logo
   const { data: store } = await supabase

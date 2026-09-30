@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { fetchAll } from '@/lib/supabase/fetch-all';
 
 interface Suggestions {
   brands: string[];
@@ -26,10 +27,14 @@ export function useItemSuggestions() {
         if (!user) return;
 
         // Get all items for this user
-        const { data: items } = await supabase
-          .from('receipt_items')
-          .select('brand, generic_name, variant, receipts!inner(user_id)')
-          .eq('receipts.user_id', user.id);
+        const items = await fetchAll((from, to) =>
+          supabase
+            .from('receipt_items')
+            .select('brand, generic_name, variant, receipts!inner(user_id)')
+            .eq('receipts.user_id', user.id)
+            .order('id')
+            .range(from, to)
+        );
 
         if (items) {
           // Extract unique values

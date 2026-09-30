@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { fetchAll } from '@/lib/supabase/fetch-all';
 import Link from 'next/link';
 import LogoutButton from '@/components/auth/logout-button';
 import PriceComparison from '@/components/stores/price-comparison';
@@ -20,19 +21,27 @@ export default async function StoresPage() {
   const userIsAdmin = await isAdmin(user.id);
 
   // Get all receipts grouped by store
-  const { data: receipts } = await supabase
-    .from('receipts')
-    .select('*')
-    .eq('user_id', user.id);
+  const receipts = await fetchAll((from, to) =>
+    supabase
+      .from('receipts')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('id')
+      .range(from, to)
+  );
 
   // Get stores with logos
   const { data: stores } = await supabase.from('stores').select('*');
 
   // Get all items for price comparison
-  const { data: allItems } = await supabase
-    .from('receipt_items')
-    .select('*, receipts!inner(user_id, store_name)')
-    .eq('receipts.user_id', user.id);
+  const allItems = await fetchAll((from, to) =>
+    supabase
+      .from('receipt_items')
+      .select('*, receipts!inner(user_id, store_name)')
+      .eq('receipts.user_id', user.id)
+      .order('id')
+      .range(from, to)
+  );
 
   // Calculate stats per store
   const storeStats = receipts
