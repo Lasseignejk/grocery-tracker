@@ -84,7 +84,7 @@ export default function UploadReceipt() {
           user_id: user.id,
           image_url: publicUrl,
           store_name: null, // ✅ Changed from "Processing..."
-          purchase_date: new Date().toISOString().split('T')[0],
+          purchase_date: null, // Filled in by the parser if the date is readable
           total_amount: 0,
         })
         .select()

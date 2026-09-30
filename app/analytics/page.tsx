@@ -116,9 +116,10 @@ export default async function AnalyticsPage() {
   const spendingOverTime = receipts
     ? Object.entries(
         receipts.reduce((acc, r) => {
-          const date =
-            r.purchase_date || new Date().toISOString().split('T')[0];
-          acc[date] = (acc[date] || 0) + (r.total_amount || 0);
+          // Receipts without a readable date can't be placed on the timeline
+          if (!r.purchase_date) return acc;
+          acc[r.purchase_date] =
+            (acc[r.purchase_date] || 0) + (r.total_amount || 0);
           return acc;
         }, {} as Record<string, number>)
       )

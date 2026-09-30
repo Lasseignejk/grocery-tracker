@@ -41,7 +41,7 @@ export default async function StoreDetailPage({
     .select('*')
     .eq('user_id', user.id)
     .ilike('store_name', storeName)
-    .order('purchase_date', { ascending: false });
+    .order('purchase_date', { ascending: false, nullsFirst: false });
 
   if (error || !receipts || receipts.length === 0) {
     notFound();
@@ -96,8 +96,9 @@ export default async function StoreDetailPage({
 
   // Spending over time
   const spendingByDate = receipts.reduce((acc, r) => {
-    const date = r.purchase_date || new Date().toISOString().split('T')[0];
-    acc[date] = (acc[date] || 0) + (r.total_amount || 0);
+    // Receipts without a readable date can't be placed on the timeline
+    if (!r.purchase_date) return acc;
+    acc[r.purchase_date] = (acc[r.purchase_date] || 0) + (r.total_amount || 0);
     return acc;
   }, {} as Record<string, number>);
 
@@ -162,7 +163,8 @@ export default async function StoreDetailPage({
               <p className="text-gray-600">
                 Shopping here since{' '}
                 {formatDateForDisplay(
-                  receipts[receipts.length - 1]?.purchase_date
+                  receipts.findLast((r) => r.purchase_date)?.purchase_date ??
+                    null
                 )}
               </p>
             </div>

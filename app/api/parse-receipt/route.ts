@@ -14,6 +14,15 @@ function getErrorMessage(error: unknown): string {
   return 'Unknown error';
 }
 
+// Accepts only real calendar dates in YYYY-MM-DD format
+function isValidDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+  const date = new Date(`${value}T00:00:00Z`);
+  return !isNaN(date.getTime()) && date.toISOString().startsWith(value);
+}
+
 export async function POST(request: Request) {
   let user: any = null;
   let receiptId: string | null = null;
@@ -316,13 +325,15 @@ EXAMPLE (correct format):
       );
     }
 
-    // Update receipt with parsed data
+    // Update receipt with parsed data. If the date isn't readable, keep the
+    // existing one (e.g. entered by hand) rather than guessing today's date.
     const { error: updateError } = await supabase
       .from('receipts')
       .update({
         store_name: parsedData.store_name || 'Unknown',
-        purchase_date:
-          parsedData.purchase_date || new Date().toISOString().split('T')[0],
+        purchase_date: isValidDate(parsedData.purchase_date)
+          ? parsedData.purchase_date
+          : receipt.purchase_date,
         total_amount: parsedData.total_amount || 0,
         raw_text: JSON.stringify(parsedData),
       })
