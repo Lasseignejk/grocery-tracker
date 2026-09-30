@@ -56,8 +56,8 @@ export default function ParseButton({ receiptId }: { receiptId: string }) {
         throw new Error(result.error || 'Failed to parse receipt');
       }
 
-      // Check if parsing was truncated
-      if (result.truncated && result.warning) {
+      // e.g. the items don't add up to the receipt total
+      if (result.warning) {
         setWarning(result.warning);
       }
 
@@ -91,7 +91,7 @@ export default function ParseButton({ receiptId }: { receiptId: string }) {
             <span className="text-amber-600">⚠️</span>
             <div className="flex-1">
               <p className="text-sm font-medium text-amber-900">
-                Partial Parse
+                Check the prices
               </p>
               <p className="text-sm text-amber-800 mt-1">{warning}</p>
             </div>

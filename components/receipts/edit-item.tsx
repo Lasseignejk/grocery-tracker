@@ -5,28 +5,12 @@ import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import { ReceiptItem } from '@/lib/types';
 import { useItemSuggestions } from '@/lib/hooks/use-item-suggestions';
+import { CATEGORIES } from '@/lib/categories';
 import AutocompleteInput from '@/components/ui/autocomplete-input';
-// import LinkItemsDialog from './link-items-dialog';
 
 interface EditItemProps {
   item: ReceiptItem;
 }
-
-const CATEGORIES = [
-  'bakery',
-  'beverages',
-  'bread',
-  'cans',
-  'dairy and eggs',
-  'frozen',
-  'household',
-  'meat',
-  'personal-care',
-  'pet',
-  'produce',
-  'snacks',
-  'other',
-];
 
 // Helper function to capitalize first letter of each word
 function capitalizeWords(str: string | null): string {

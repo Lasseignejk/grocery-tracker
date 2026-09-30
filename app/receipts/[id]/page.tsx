@@ -6,6 +6,7 @@ import EditReceiptDetails from '@/components/receipts/edit-receipt-details';
 import EditItem from '@/components/receipts/edit-item';
 import AddItem from '@/components/receipts/add-item';
 import DeleteReceiptButton from '@/components/receipts/delete-receipt-button';
+import { itemsMatchTotal } from '@/lib/receipt-parser';
 
 export default async function ReceiptDetailPage({
   params,
@@ -43,6 +44,27 @@ export default async function ReceiptDetailPage({
     .order('created_at', { ascending: true });
 
   const hasItems = items && items.length > 0;
+
+  // Warn while the items don't add up to what the receipt says was paid.
+  // Subtotal and tax only exist in the parser's raw output, not as columns.
+  const itemsSum =
+    Math.round(
+      (items ?? []).reduce((sum, item) => sum + (item.total_price || 0), 0) * 100
+    ) / 100;
+  let parsedTotals: { subtotal?: number | null; tax?: number | null } = {};
+  try {
+    parsedTotals = receipt.raw_text ? JSON.parse(receipt.raw_text) : {};
+  } catch {
+    // Older receipts may not have parseable raw output
+  }
+  const showTotalsWarning =
+    hasItems &&
+    receipt.total_amount != null &&
+    !itemsMatchTotal(itemsSum, {
+      subtotal: parsedTotals.subtotal ?? null,
+      tax: parsedTotals.tax ?? null,
+      total_amount: receipt.total_amount,
+    });
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -111,6 +133,18 @@ export default async function ReceiptDetailPage({
                 <h2 className="text-xl font-bold mb-4">
                   Items ({items.length})
                 </h2>
+                {showTotalsWarning && (
+                  <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+                    <p className="font-medium text-amber-900">
+                      ⚠️ Items don&apos;t add up to the receipt total
+                    </p>
+                    <p className="mt-1">
+                      The items add up to ${itemsSum.toFixed(2)}, but the
+                      receipt total is ${receipt.total_amount!.toFixed(2)}.
+                      Some prices may be wrong or an item may be missing.
+                    </p>
+                  </div>
+                )}
                 <div className="space-y-3">
                   {items.map((item) => (
                     <EditItem key={item.id} item={item} />

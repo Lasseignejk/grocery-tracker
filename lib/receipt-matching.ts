@@ -116,10 +116,10 @@ export function findBestMatch(
  * Enhance parsed items with data from historical matches
  * Returns enhanced items AND count of how many were enhanced
  */
-export function enhanceWithMatches(
-  parsedItems: ParsedItem[],
+export function enhanceWithMatches<T extends ParsedItem>(
+  parsedItems: T[],
   historicalItems: MatchCandidate[]
-): { items: ParsedItem[]; enhancedCount: number } {
+): { items: T[]; enhancedCount: number } {
   let enhancedCount = 0;
 
   const items = parsedItems.map((item) => {
@@ -161,7 +161,7 @@ export function enhanceWithMatches(
       size: item.size || match.size,
       unit: item.unit || match.unit,
       category: item.category || match.category,
-    };
+    } as T;
   });
 
   return { items, enhancedCount };

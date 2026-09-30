@@ -4,27 +4,12 @@ import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import { useItemSuggestions } from '@/lib/hooks/use-item-suggestions';
+import { CATEGORIES } from '@/lib/categories';
 import AutocompleteInput from '@/components/ui/autocomplete-input';
 
 interface AddItemProps {
   receiptId: string;
 }
-
-const CATEGORIES = [
-  'bakery',
-  'beverages',
-  'bread',
-  'cans',
-  'dairy and eggs',
-  'frozen',
-  'household',
-  'meat',
-  'personal-care',
-  'pet',
-  'produce',
-  'snacks',
-  'other',
-];
 
 export default function AddItem({ receiptId }: AddItemProps) {
   const [isAdding, setIsAdding] = useState(false);

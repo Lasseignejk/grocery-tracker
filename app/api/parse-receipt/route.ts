@@ -1,11 +1,10 @@
 import { createClient } from '@/lib/supabase/server';
-import OpenAI from 'openai';
 import { NextResponse } from 'next/server';
 import { enhanceWithMatches } from '@/lib/receipt-matching';
+import { parseReceiptImage, type ParseAttempt } from '@/lib/receipt-parser';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// A primary parse plus a fallback can take over a minute on long receipts
+export const maxDuration = 120;
 
 // Helper function to get error message
 function getErrorMessage(error: unknown): string {
@@ -23,284 +22,95 @@ function isValidDate(value: unknown): value is string {
   return !isNaN(date.getTime()) && date.toISOString().startsWith(value);
 }
 
-export async function POST(request: Request) {
-  let user: any = null;
-  let receiptId: string | null = null;
-  let promptTokens = 0;
-  let completionTokens = 0;
-  let totalTokens = 0;
-  let estimatedCost = 0;
-  let content: string | null = null;
-  let finishReason: string | null = null;
-  let wasTruncated = false;
+type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 
-  try {
-    const { receiptId: requestReceiptId } = await request.json();
-    receiptId = requestReceiptId;
+// Log each model call; a failed log shouldn't fail the parse
+async function logAttempts(
+  supabase: SupabaseClient,
+  userId: string,
+  receiptId: string,
+  attempts: ParseAttempt[],
+  itemsEnhanced: number,
+  finalError: string | null
+) {
+  const rows = attempts.map((attempt) => ({
+    user_id: userId,
+    receipt_id: receiptId,
+    model: attempt.model,
+    prompt_tokens: attempt.prompt_tokens,
+    completion_tokens: attempt.completion_tokens,
+    total_tokens: attempt.total_tokens,
+    estimated_cost: attempt.estimated_cost,
+    response_text: attempt.response_text,
+    finish_reason: attempt.finish_reason,
+    was_truncated: attempt.finish_reason === 'length',
+    items_parsed: attempt.items_parsed,
+    items_enhanced: itemsEnhanced,
+    parsing_successful: !attempt.error && !finalError,
+    error_message:
+      attempt.error ??
+      (attempt.items_parsed && !attempt.totals_match
+        ? "Items don't add up to the receipt total"
+        : finalError),
+  }));
 
-    if (!receiptId) {
-      return NextResponse.json(
-        { error: 'Receipt ID is required' },
-        { status: 400 }
-      );
-    }
-
-    const supabase = await createClient();
-
-    // Get user
-    const {
-      data: { user: authUser },
-    } = await supabase.auth.getUser();
-    user = authUser;
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    // Get receipt
-    const { data: receipt, error: receiptError } = await supabase
-      .from('receipts')
-      .select('*')
-      .eq('id', receiptId)
-      .eq('user_id', user.id)
-      .single();
-
-    if (receiptError || !receipt) {
-      return NextResponse.json({ error: 'Receipt not found' }, { status: 404 });
-    }
-
-    if (!receipt.image_url) {
-      return NextResponse.json(
-        { error: 'Receipt has no image' },
-        { status: 400 }
-      );
-    }
-
-    // Call OpenAI GPT-4 Vision to parse the receipt
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text: `Analyze this grocery receipt image and extract the following information in JSON format.
-
-CRITICAL: Return ONLY valid JSON with NO comments, NO explanatory text, NO markdown formatting.
-
-{
-  "store_name": "name of the store",
-  "purchase_date": "date in YYYY-MM-DD format or null if not visible",
-  "total_amount": number,
-  "items": [
-    {
-      "receipt_text": "EXACT text as it appears on the receipt. Do not include price or item numbers",
-      "item_name": "full descriptive name including size/package",
-      "brand": "brand name or null",
-      "generic_name": "generic product type",
-      "variant": "specific variety/flavor or null",
-      "size": "measurement amount (e.g., '2', '12', '32', '1.5')",
-      "unit": "unit type (e.g., 'liter', 'oz', 'lb', 'kg', 'count', 'package')",
-      "quantity": number,
-      "unit_price": number,
-      "total_price": number,
-      "was_on_sale": boolean,
-      "category": "one of: bakery, beverages, bread, cans, dairy and eggs, frozen, household, meat, personal-care, pet, produce, snacks, other"
-    }
-  ]
+  const { error } = await supabase.from('api_logs').insert(rows);
+  if (error) console.error('Failed to log API calls:', error);
 }
 
-PARSING GUIDELINES:
+export async function POST(request: Request) {
+  const { receiptId } = await request.json();
 
-1. **Receipt Text**: Exact text as shown on receipt (preserve caps, abbreviations)
-2. **Item Name**: Clean, readable version with size info expanded
-3. **Brand**: Brand name ONLY for branded products (null for produce)
-4. **Generic Name**: Broad category (singular): "miso", "protein bar", "mushroom"
-5. **Variant**: Specific type/flavor: "white", "chocolate peanut butter", "shiitake"
-6. **Size and Unit**: Extract package size/measurement
-   - Size: The numeric amount ("2", "12", "32", "1.5")
-   - Unit: The unit type ("liter", "oz", "lb", "kg", "count", "package", "bottle", "can", "bag")
-   - If no size visible, use null for both
-7. **Prices**: Use the FINAL price paid after all discounts/promotions
-8. **Was On Sale**: true if ANY discount indicator present (SALE, *, promotion text)
-9. **Category**: Choose the most appropriate category
+  if (!receiptId) {
+    return NextResponse.json(
+      { error: 'Receipt ID is required' },
+      { status: 400 }
+    );
+  }
 
-IMPORTANT FOR LONG RECEIPTS:
-- If the receipt has many items and you're running low on response space, prioritize:
-  1. Store name, date, and total (essential)
-  2. As many complete items as possible
-  3. NEVER end with an incomplete item - if you can't fit the whole item, stop at the previous one
-- It's better to return 30 complete items than 35 items with the last 5 incomplete
+  const supabase = await createClient();
 
-CATEGORIES:
-- bakery: pastries, cakes, cookies
-- beverages: soda, juice, coffee, tea, alcohol
-- bread: bread, bagels
-- cans: diced tomatoes, white beans
-- dairy and eggs: milk, cheese, yogurt, butter, eggs
-- frozen: pizza, steamed vegetables
-- household: cleaning, paper products
-- meat: meat, poultry, seafood, deli
-- personal-care: soap, shampoo, cosmetics
-- pet: pet food, pet toys
-- produce: fruits, vegetables, herbs
-- snacks: chips, candy, cookies, bars
-- other: everything else
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-CRITICAL RULES:
-- Return ONLY the JSON object, nothing else
-- NO comments in the JSON (no // or /* */)
-- NO explanatory text before or after
-- NO markdown code fences
-- Use null for missing string values
-- Use 0 for missing numeric values
-- Use false for missing boolean values
-- All text fields (brand, generic_name, variant) should be lowercase
-- receipt_text preserves original casing
-- Extract as many COMPLETE items as possible
-- STOP before writing an incomplete item
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
 
-EXAMPLE (correct format):
-{
-  "store_name": "Publix",
-  "purchase_date": "2025-01-15",
-  "total_amount": 16.33,
-  "items": [
-    {
-      "receipt_text": "HIKARI WHITE MISO",
-      "item_name": "Hikari White Miso",
-      "brand": "hikari",
-      "generic_name": "miso",
-      "variant": "white",
-      "size": null,
-      "unit": null,
-      "quantity": 1,
-      "unit_price": 10.49,
-      "total_price": 10.49,
-      "was_on_sale": false,
-      "category": "other"
-    }
-  ]
-}`,
-            },
-            {
-              type: 'image_url',
-              image_url: {
-                url: receipt.image_url,
-              },
-            },
-          ],
-        },
-      ],
-      max_tokens: 4096,
-      temperature: 0,
-    });
+  const { data: receipt, error: receiptError } = await supabase
+    .from('receipts')
+    .select('*')
+    .eq('id', receiptId)
+    .eq('user_id', user.id)
+    .single();
 
-    content = response.choices[0].message.content;
-    finishReason = response.choices[0].finish_reason;
-    wasTruncated = finishReason === 'length';
+  if (receiptError || !receipt) {
+    return NextResponse.json({ error: 'Receipt not found' }, { status: 404 });
+  }
 
-    // Get token usage
-    const usage = response.usage;
-    promptTokens = usage?.prompt_tokens || 0;
-    completionTokens = usage?.completion_tokens || 0;
-    totalTokens = usage?.total_tokens || 0;
+  if (!receipt.image_url) {
+    return NextResponse.json({ error: 'Receipt has no image' }, { status: 400 });
+  }
 
-    // Calculate estimated cost (GPT-4o pricing)
-    estimatedCost = promptTokens * 0.0000025 + completionTokens * 0.00001;
+  const result = await parseReceiptImage(receipt.image_url);
+  let itemsEnhanced = 0;
 
-    if (!content) {
-      throw new Error('No response from AI');
-    }
-
-    // Parse JSON response with better error handling
-    let parsedData;
-    try {
-      // Remove markdown code blocks if present
-      let cleanContent = content
-        .replace(/```json\n?/g, '')
-        .replace(/```\n?/g, '')
-        .trim();
-
-      // Remove any comments
-      cleanContent = cleanContent.replace(/\/\/.*$/gm, '');
-      cleanContent = cleanContent.replace(/\/\*[\s\S]*?\*\//g, '');
-
-      // Remove trailing commas
-      cleanContent = cleanContent.replace(/,(\s*[}\]])/g, '$1');
-
-      // If response was truncated, try to fix incomplete JSON
-      if (wasTruncated) {
-        console.log('Response was truncated, attempting to fix JSON...');
-
-        // Check if we're in the middle of an items array
-        const itemsMatch = cleanContent.match(/"items"\s*:\s*\[/);
-        if (itemsMatch) {
-          // Find the last complete item (ending with })
-          const lastCompleteItemIndex = cleanContent.lastIndexOf('}');
-          if (lastCompleteItemIndex > -1) {
-            // Truncate to last complete item and close the JSON properly
-            cleanContent = cleanContent.substring(0, lastCompleteItemIndex + 1);
-
-            // Count opening brackets to close properly
-            const openBrackets = (cleanContent.match(/\[/g) || []).length;
-            const closeBrackets = (cleanContent.match(/\]/g) || []).length;
-            const openBraces = (cleanContent.match(/\{/g) || []).length;
-            const closeBraces = (cleanContent.match(/\}/g) || []).length;
-
-            // Close items array if needed
-            if (openBrackets > closeBrackets) {
-              cleanContent += ']';
-            }
-
-            // Close main object if needed
-            if (openBraces > closeBraces) {
-              cleanContent += '}';
-            }
-          }
-        }
-      }
-
-      parsedData = JSON.parse(cleanContent);
-    } catch (parseError) {
-      console.error('Failed to parse AI response:', content);
-      console.error('Parse error:', parseError);
-
-      // Log the parsing error
-      try {
-        await supabase.from('api_logs').insert({
-          user_id: user.id,
-          receipt_id: receiptId,
-          model: 'gpt-4o',
-          prompt_tokens: promptTokens,
-          completion_tokens: completionTokens,
-          total_tokens: totalTokens,
-          response_text: content,
-          finish_reason: finishReason,
-          was_truncated: wasTruncated,
-          items_parsed: 0,
-          parsing_successful: false,
-          error_message: getErrorMessage(parseError),
-          estimated_cost: estimatedCost,
-        });
-      } catch (logError) {
-        console.error('Failed to log parsing error:', logError);
-      }
-
+  try {
+    const parsedData = result.data;
+    if (!parsedData) {
       throw new Error(
-        wasTruncated
-          ? 'Response was truncated - receipt may be too long'
-          : 'JSON parsing failed'
+        result.attempts.at(-1)?.error || 'Failed to parse receipt'
       );
     }
 
-    // Validate the parsed data structure
-    if (!parsedData.items || !Array.isArray(parsedData.items)) {
-      throw new Error('Invalid response structure: missing items array');
+    if (parsedData.items.length === 0) {
+      throw new Error(
+        'No items were extracted from the receipt. The image may be unclear.'
+      );
     }
 
-    //  Fetch historical items for matching
+    // Fill in missing brand/size/etc. from items the user has bought before
     const { data: historicalItems } = await supabase
       .from('receipt_items')
       .select(
@@ -310,19 +120,11 @@ EXAMPLE (correct format):
       .not('receipt_text', 'is', null)
       .limit(500);
 
-    // Enhance parsed items with historical matches
-    let itemsEnhanced = 0;
+    let items = parsedData.items;
     if (historicalItems && historicalItems.length > 0) {
-      const result = enhanceWithMatches(parsedData.items, historicalItems);
-      parsedData.items = result.items;
-      itemsEnhanced = result.enhancedCount;
-    }
-
-    // Check if we got valid items
-    if (parsedData.items.length === 0) {
-      throw new Error(
-        'No items were extracted from the receipt. The image may be unclear.'
-      );
+      const enhanced = enhanceWithMatches(items, historicalItems);
+      items = enhanced.items;
+      itemsEnhanced = enhanced.enhancedCount;
     }
 
     // Update receipt with parsed data. If the date isn't readable, keep the
@@ -344,8 +146,7 @@ EXAMPLE (correct format):
       throw new Error('Failed to update receipt');
     }
 
-    // Insert new items
-    const itemsToInsert = parsedData.items.map((item: any) => ({
+    const itemsToInsert = items.map((item) => ({
       receipt_id: receiptId,
       item_name: item.item_name || 'Unknown Item',
       receipt_text: item.receipt_text || null,
@@ -354,10 +155,10 @@ EXAMPLE (correct format):
       variant: item.variant || null,
       size: item.size || null,
       unit: item.unit || null,
-      quantity: parseFloat(item.quantity) || 1,
-      unit_price: parseFloat(item.unit_price) || 0,
-      total_price: parseFloat(item.total_price) || 0,
-      was_on_sale: Boolean(item.was_on_sale),
+      quantity: item.quantity || 1,
+      unit_price: item.unit_price || 0,
+      total_price: item.total_price || 0,
+      was_on_sale: item.was_on_sale,
       category: item.category || 'other',
     }));
 
@@ -382,65 +183,27 @@ EXAMPLE (correct format):
       throw new Error('Failed to insert items');
     }
 
-    // Log successful parsing
-    try {
-      await supabase.from('api_logs').insert({
-        user_id: user.id,
-        receipt_id: receiptId,
-        model: 'gpt-4o',
-        prompt_tokens: promptTokens,
-        completion_tokens: completionTokens,
-        total_tokens: totalTokens,
-        response_text: content,
-        finish_reason: finishReason,
-        was_truncated: wasTruncated,
-        items_parsed: parsedData.items?.length || 0,
-        items_enhanced: itemsEnhanced, // ✅ Now we track it!
-        parsing_successful: true,
-        error_message: null,
-        estimated_cost: estimatedCost,
-      });
-    } catch (logError) {
-      // Don't fail the whole request if logging fails
-      console.error('Failed to log API call:', logError);
-    }
+    await logAttempts(supabase, user.id, receiptId, result.attempts, itemsEnhanced, null);
 
-    // Return success with truncation warning if applicable
     return NextResponse.json({
       success: true,
       data: parsedData,
-      message: `Receipt parsed successfully - ${parsedData.items.length} items extracted`,
-      truncated: wasTruncated,
-      warning: wasTruncated
-        ? `This receipt may have more items than shown. We extracted ${parsedData.items.length} items, but the receipt might be longer. Please review and add any missing items manually.`
-        : null,
+      message: `Receipt parsed successfully - ${items.length} items extracted`,
+      needsReview: !result.totalsMatch,
+      warning: result.totalsMatch
+        ? null
+        : `The items add up to $${result.itemsSum.toFixed(2)}, which doesn't match the receipt total of $${(parsedData.total_amount ?? 0).toFixed(2)}. Please check the prices.`,
     });
   } catch (error: unknown) {
     console.error('Error parsing receipt:', error);
-
-    // Log the error if we have the necessary info
-    if (user && receiptId) {
-      try {
-        const supabase = await createClient();
-        await supabase.from('api_logs').insert({
-          user_id: user.id,
-          receipt_id: receiptId,
-          model: 'gpt-4o',
-          prompt_tokens: promptTokens,
-          completion_tokens: completionTokens,
-          total_tokens: totalTokens,
-          response_text: content,
-          finish_reason: finishReason,
-          was_truncated: wasTruncated,
-          items_parsed: 0,
-          parsing_successful: false,
-          error_message: getErrorMessage(error),
-          estimated_cost: estimatedCost,
-        });
-      } catch (logError) {
-        console.error('Failed to log API error:', logError);
-      }
-    }
+    await logAttempts(
+      supabase,
+      user.id,
+      receiptId,
+      result.attempts,
+      itemsEnhanced,
+      getErrorMessage(error)
+    );
 
     return NextResponse.json(
       { error: getErrorMessage(error) },
