@@ -67,16 +67,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Delete existing items before re-parsing
-    const { error: deleteItemsError } = await supabase
-      .from('receipt_items')
-      .delete()
-      .eq('receipt_id', receiptId);
-
-    if (deleteItemsError) {
-      console.error('Error deleting existing items:', deleteItemsError);
-    }
-
     // Call OpenAI GPT-4 Vision to parse the receipt
     const response = await openai.chat.completions.create({
       model: 'gpt-4o',
@@ -359,6 +349,18 @@ EXAMPLE (correct format):
       was_on_sale: Boolean(item.was_on_sale),
       category: item.category || 'other',
     }));
+
+    // Only remove the old items once the new parse has succeeded, so a failed
+    // re-parse leaves the receipt as it was
+    const { error: deleteItemsError } = await supabase
+      .from('receipt_items')
+      .delete()
+      .eq('receipt_id', receiptId);
+
+    if (deleteItemsError) {
+      console.error('Error deleting existing items:', deleteItemsError);
+      throw new Error('Failed to replace existing items');
+    }
 
     const { error: itemsError } = await supabase
       .from('receipt_items')
