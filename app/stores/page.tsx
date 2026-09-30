@@ -2,10 +2,34 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { fetchAll } from '@/lib/supabase/fetch-all';
 import Link from 'next/link';
-import LogoutButton from '@/components/auth/logout-button';
 import PriceComparison from '@/components/stores/price-comparison';
 import { isAdmin } from '@/lib/auth';
 import Nav from '@/components/layout/nav';
+import type { Receipt } from '@/lib/types';
+
+interface StoreStats {
+  name: string;
+  totalSpent: number;
+  visitCount: number;
+  receipts: Receipt[];
+}
+
+// Running totals for one product at one store
+interface StorePriceTotals {
+  store_name: string;
+  total_price: number;
+  purchase_count: number;
+  sizes: string[];
+  units: string[];
+}
+
+// One product (brand + generic name + variant) across every store it was bought at
+interface ItemGroup {
+  generic_name: string | null;
+  brand: string | null;
+  variant: string | null;
+  stores: Record<string, StorePriceTotals>;
+}
 
 export default async function StoresPage() {
   const supabase = await createClient();
@@ -60,7 +84,7 @@ export default async function StoresPage() {
           acc[storeName].visitCount += 1;
           acc[storeName].receipts.push(receipt);
           return acc;
-        }, {} as Record<string, any>)
+        }, {} as Record<string, StoreStats>)
       )
         .map(([name, stats]) => {
           const store = stores?.find(
@@ -72,7 +96,7 @@ export default async function StoresPage() {
             color: store?.color || '#3b82f6',
             avgReceiptTotal: stats.totalSpent / stats.visitCount,
             lastVisit: stats.receipts.sort(
-              (a: any, b: any) =>
+              (a, b) =>
                 new Date(b.purchase_date || b.created_at).getTime() -
                 new Date(a.purchase_date || a.created_at).getTime()
             )[0]?.purchase_date,
@@ -98,12 +122,11 @@ export default async function StoresPage() {
               generic_name: item.generic_name,
               brand: item.brand,
               variant: item.variant,
-              stores: {} as Record<string, any>,
+              stores: {},
             };
           }
 
-          const storeName =
-            (item as any).receipts.store_name || 'Unknown Store';
+          const storeName = item.receipts.store_name || 'Unknown Store';
 
           if (!acc[key].stores[storeName]) {
             acc[key].stores[storeName] = {
@@ -121,13 +144,13 @@ export default async function StoresPage() {
           if (item.unit) acc[key].stores[storeName].units.push(item.unit);
 
           return acc;
-        }, {} as Record<string, any>);
+        }, {} as Record<string, ItemGroup>);
 
         // Convert to array and filter for items found at multiple stores
         return Object.values(itemGroups)
-          .map((group: any) => {
+          .map((group) => {
             const storesArray = Object.values(group.stores).map(
-              (store: any) => ({
+              (store) => ({
                 store_name: store.store_name,
                 avg_price: store.total_price / store.purchase_count,
                 avg_size: store.sizes.length > 0 ? store.sizes[0] : null,
@@ -147,11 +170,11 @@ export default async function StoresPage() {
           .sort((a, b) => {
             // Sort by potential savings (difference between highest and lowest price)
             const aSavings =
-              Math.max(...a.stores.map((s: any) => s.avg_price)) -
-              Math.min(...a.stores.map((s: any) => s.avg_price));
+              Math.max(...a.stores.map((s) => s.avg_price)) -
+              Math.min(...a.stores.map((s) => s.avg_price));
             const bSavings =
-              Math.max(...b.stores.map((s: any) => s.avg_price)) -
-              Math.min(...b.stores.map((s: any) => s.avg_price));
+              Math.max(...b.stores.map((s) => s.avg_price)) -
+              Math.min(...b.stores.map((s) => s.avg_price));
             return bSavings - aSavings;
           });
       })()

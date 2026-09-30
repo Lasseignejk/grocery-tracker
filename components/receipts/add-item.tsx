@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useItemSuggestions } from '@/lib/hooks/use-item-suggestions';
 import { CATEGORIES } from '@/lib/categories';
 import AutocompleteInput from '@/components/ui/autocomplete-input';
+import { getErrorMessage } from '@/lib/errors';
 
 interface AddItemProps {
   receiptId: string;
@@ -73,8 +74,8 @@ export default function AddItem({ receiptId }: AddItemProps) {
       setCategory('other');
       setIsAdding(false);
       router.refresh();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Something went wrong'));
     } finally {
       setSaving(false);
     }

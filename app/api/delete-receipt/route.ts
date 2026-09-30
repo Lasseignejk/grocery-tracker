@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
+import { getErrorMessage } from '@/lib/errors';
 
 export async function DELETE(request: Request) {
   try {
@@ -92,10 +93,10 @@ export async function DELETE(request: Request) {
       success: true,
       message: 'Receipt and associated items deleted successfully',
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error deleting receipt:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to delete receipt' },
+      { error: getErrorMessage(error, 'Failed to delete receipt') },
       { status: 500 }
     );
   }

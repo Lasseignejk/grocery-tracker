@@ -1,7 +1,5 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import Link from 'next/link';
-import LogoutButton from '@/components/auth/logout-button';
 import StoreLogoUpload from '@/components/admin/store-logo-upload';
 import Nav from '@/components/layout/nav';
 import { isAdmin } from '@/lib/auth';
@@ -92,7 +90,7 @@ export default async function AdminStoresPage() {
           </h4>
           <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
             <li>Find a store logo image (PNG or SVG works best)</li>
-            <li>Upload it to Supabase Storage in a "store-logos" bucket</li>
+            <li>Upload it to Supabase Storage in a &quot;store-logos&quot; bucket</li>
             <li>Copy the public URL</li>
             <li>Paste it into the Logo URL field here</li>
             <li>Optionally set a brand color (hex code)</li>

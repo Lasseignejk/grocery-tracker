@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { getErrorMessage } from '@/lib/errors';
 
 export default function ParseButton({ receiptId }: { receiptId: string }) {
   const [parsing, setParsing] = useState(false);
@@ -62,8 +63,8 @@ export default function ParseButton({ receiptId }: { receiptId: string }) {
       }
 
       router.refresh();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Something went wrong'));
     } finally {
       setParsing(false);
     }

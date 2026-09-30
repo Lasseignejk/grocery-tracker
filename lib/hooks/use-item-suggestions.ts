@@ -15,9 +15,11 @@ export function useItemSuggestions() {
     variants: [],
   });
   const [loading, setLoading] = useState(true);
-  const supabase = createClient();
 
+  // Load once per form
   useEffect(() => {
+    const supabase = createClient();
+
     async function fetchSuggestions() {
       try {
         // Get user

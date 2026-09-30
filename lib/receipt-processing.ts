@@ -1,6 +1,7 @@
 import type { createClient } from '@/lib/supabase/server';
 import type { Receipt } from '@/lib/types';
 import { enhanceWithMatches } from '@/lib/receipt-matching';
+import { getErrorMessage } from '@/lib/errors';
 import {
   parseReceiptImages,
   type ParseAttempt,
@@ -14,12 +15,6 @@ export interface ProcessedReceipt {
   itemCount: number;
   needsReview: boolean;
   warning: string | null;
-}
-
-export function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  if (typeof error === 'string') return error;
-  return 'Unknown error';
 }
 
 // Accepts only real calendar dates in YYYY-MM-DD format

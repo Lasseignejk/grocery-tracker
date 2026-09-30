@@ -4,7 +4,7 @@ import { useState } from 'react';
 
 interface PriceComparisonProps {
   comparisons: Array<{
-    generic_name: string;
+    generic_name: string | null;
     brand?: string | null;
     variant?: string | null;
     stores: Array<{
@@ -47,7 +47,7 @@ export default function PriceComparison({ comparisons }: PriceComparisonProps) {
         Price Comparisons Across Stores
       </h3>
       <p className="text-sm text-gray-600 mb-4">
-        Compare prices for items you've purchased at multiple stores
+        Compare prices for items you&apos;ve purchased at multiple stores
       </p>
 
       <div className="space-y-3">

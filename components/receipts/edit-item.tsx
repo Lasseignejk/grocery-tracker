@@ -7,6 +7,7 @@ import { ReceiptItem } from '@/lib/types';
 import { useItemSuggestions } from '@/lib/hooks/use-item-suggestions';
 import { CATEGORIES } from '@/lib/categories';
 import AutocompleteInput from '@/components/ui/autocomplete-input';
+import { getErrorMessage } from '@/lib/errors';
 
 interface EditItemProps {
   item: ReceiptItem;
@@ -25,7 +26,6 @@ function capitalizeWords(str: string | null): string {
 export default function EditItem({ item }: EditItemProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [itemName, setItemName] = useState(item.item_name);
-  const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [genericName, setGenericName] = useState(item.generic_name || '');
   const [brand, setBrand] = useState(item.brand || '');
   const [variant, setVariant] = useState(item.variant || '');
@@ -73,8 +73,8 @@ export default function EditItem({ item }: EditItemProps) {
 
       setIsEditing(false);
       router.refresh();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Something went wrong'));
     } finally {
       setSaving(false);
     }
@@ -95,8 +95,8 @@ export default function EditItem({ item }: EditItemProps) {
       if (deleteError) throw deleteError;
 
       router.refresh();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Something went wrong'));
       setDeleting(false);
     }
   };

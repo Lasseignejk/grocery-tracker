@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
+import { getErrorMessage } from '@/lib/errors';
 
 interface EditReceiptDetailsProps {
   receipt: {
@@ -60,8 +61,8 @@ export default function EditReceiptDetails({
 
       setIsEditing(false);
       router.refresh();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Something went wrong'));
     } finally {
       setSaving(false);
     }

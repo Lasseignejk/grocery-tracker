@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
-import { getErrorMessage, parseAndSaveReceipt } from '@/lib/receipt-processing';
+import { getErrorMessage } from '@/lib/errors';
+import { parseAndSaveReceipt } from '@/lib/receipt-processing';
 
 // A primary parse plus a fallback can take over a minute on long receipts
 export const maxDuration = 120;

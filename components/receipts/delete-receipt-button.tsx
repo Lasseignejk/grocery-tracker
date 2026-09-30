@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { getErrorMessage } from '@/lib/errors';
 
 interface DeleteReceiptButtonProps {
   receiptId: string;
@@ -45,8 +46,8 @@ export default function DeleteReceiptButton({
       // Redirect after successful deletion
       router.push(redirectTo);
       router.refresh();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Something went wrong'));
       setDeleting(false);
     }
   };

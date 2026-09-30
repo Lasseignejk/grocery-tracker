@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 
 interface AutocompleteInputProps {
   id: string;
@@ -31,25 +31,21 @@ export default function AutocompleteInput({
   helpText,
 }: AutocompleteInputProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [filteredSuggestions, setFilteredSuggestions] = useState<string[]>([]);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [hasInteracted, setHasInteracted] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  // Filter suggestions based on input
-  useEffect(() => {
-    if (value.trim() && hasInteracted) {
-      const filtered = suggestions.filter((suggestion) =>
-        suggestion.toLowerCase().includes(value.toLowerCase())
-      );
-      setFilteredSuggestions(filtered);
-      setIsOpen(filtered.length > 0);
-    } else {
-      setFilteredSuggestions([]);
-      setIsOpen(false);
-    }
-    setHighlightedIndex(-1);
-  }, [value, suggestions, hasInteracted]);
+  // Only suggest once the user has typed something in this field
+  const filteredSuggestions = useMemo(
+    () =>
+      hasInteracted && value.trim()
+        ? suggestions.filter((suggestion) =>
+            suggestion.toLowerCase().includes(value.toLowerCase())
+          )
+        : [],
+    [value, suggestions, hasInteracted]
+  );
+  const showDropdown = isOpen && filteredSuggestions.length > 0;
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -68,7 +64,7 @@ export default function AutocompleteInput({
   }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (!isOpen) return;
+    if (!showDropdown) return;
 
     switch (e.key) {
       case 'ArrowDown':
@@ -83,7 +79,7 @@ export default function AutocompleteInput({
         break;
       case 'Enter':
         e.preventDefault();
-        if (highlightedIndex >= 0) {
+        if (filteredSuggestions[highlightedIndex] !== undefined) {
           onChange(filteredSuggestions[highlightedIndex]);
           setIsOpen(false);
           setHasInteracted(false);
@@ -104,20 +100,13 @@ export default function AutocompleteInput({
 
   const handleFocus = () => {
     setHasInteracted(true);
-    // Only show dropdown if user has typed something
-    if (value.trim()) {
-      const filtered = suggestions.filter((suggestion) =>
-        suggestion.toLowerCase().includes(value.toLowerCase())
-      );
-      if (filtered.length > 0) {
-        setFilteredSuggestions(filtered);
-        setIsOpen(true);
-      }
-    }
+    setIsOpen(true);
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setHasInteracted(true);
+    setIsOpen(true);
+    setHighlightedIndex(-1);
     onChange(e.target.value.toLowerCase());
   };
 
@@ -143,7 +132,7 @@ export default function AutocompleteInput({
       {helpText && <p className="text-xs text-gray-500 mt-1">{helpText}</p>}
 
       {/* Dropdown */}
-      {isOpen && filteredSuggestions.length > 0 && (
+      {showDropdown && (
         <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto">
           {filteredSuggestions.map((suggestion, index) => (
             <button

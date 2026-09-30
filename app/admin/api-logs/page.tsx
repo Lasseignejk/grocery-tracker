@@ -1,7 +1,6 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import Link from 'next/link';
-import LogoutButton from '@/components/auth/logout-button';
 import Nav from '@/components/layout/nav';
 import { isAdmin } from '@/lib/auth';
 
@@ -38,8 +37,6 @@ export default async function ApiLogsPage() {
     logs?.reduce((sum, log) => sum + (log.total_tokens || 0), 0) || 0;
   const successCount =
     logs?.filter((log) => log.parsing_successful).length || 0;
-  const failureCount =
-    logs?.filter((log) => !log.parsing_successful).length || 0;
   const truncatedCount = logs?.filter((log) => log.was_truncated).length || 0;
 
   return (
@@ -132,7 +129,7 @@ export default async function ApiLogsPage() {
                         href={`/receipts/${log.receipt_id}`}
                         className="text-blue-600 hover:text-blue-800"
                       >
-                        {(log.receipts as any)?.store_name || 'View Receipt'}
+                        {log.receipts?.store_name || 'View Receipt'}
                       </Link>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
