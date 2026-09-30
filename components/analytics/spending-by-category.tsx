@@ -71,7 +71,7 @@ export default function SpendingByCategory({ data }: SpendingByCategoryProps) {
               />
             ))}
           </Pie>
-          <Tooltip formatter={(value: number) => `$${value.toFixed(2)}`} />
+          <Tooltip formatter={(value) => `$${Number(value).toFixed(2)}`} />
         </PieChart>
       </ResponsiveContainer>
       <div className="mt-4 grid grid-cols-2 gap-2">

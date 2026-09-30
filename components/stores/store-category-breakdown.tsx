@@ -78,7 +78,7 @@ export default function StoreCategoryBreakdown({
               />
             ))}
           </Pie>
-          <Tooltip formatter={(value: number) => `$${value.toFixed(2)}`} />
+          <Tooltip formatter={(value) => `$${Number(value).toFixed(2)}`} />
         </PieChart>
       </ResponsiveContainer>
 

@@ -52,7 +52,7 @@ export default function StoreItemsChart({ items }: StoreItemsChartProps) {
             tick={{ fontSize: 12 }}
           />
           <Tooltip
-            formatter={(value: number) => [`${value} purchases`, 'Count']}
+            formatter={(value) => [`${value} purchases`, 'Count']}
             labelFormatter={(label) => `Item: ${label}`}
           />
           <Bar dataKey="count" fill="#3b82f6" />

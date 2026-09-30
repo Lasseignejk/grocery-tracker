@@ -39,7 +39,7 @@ export default function SpendingByStore({ data }: SpendingByStoreProps) {
           <XAxis dataKey="store_name" />
           <YAxis />
           <Tooltip
-            formatter={(value: number) => `$${value.toFixed(2)}`}
+            formatter={(value) => `$${Number(value).toFixed(2)}`}
             labelFormatter={(label) => `Store: ${label}`}
           />
           <Bar dataKey="total" fill="#3b82f6" />
