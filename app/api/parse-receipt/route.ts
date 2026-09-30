@@ -107,7 +107,7 @@ CRITICAL: Return ONLY valid JSON with NO comments, NO explanatory text, NO markd
       "unit_price": number,
       "total_price": number,
       "was_on_sale": boolean,
-      "category": "one of: produce, meat, dairy, bakery, beverages, snacks, household, personal-care, frozen, other"
+      "category": "one of: bakery, beverages, bread, cans, dairy and eggs, frozen, household, meat, personal-care, pet, produce, snacks, other"
     }
   ]
 }
