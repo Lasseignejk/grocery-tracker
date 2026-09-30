@@ -70,7 +70,7 @@ export default function PriceComparison({ comparisons }: PriceComparisonProps) {
             >
               <button
                 onClick={() =>
-                  setIsExpanded
+                  isExpanded
                     ? setExpandedItem(null)
                     : setExpandedItem(itemKey)
                 }

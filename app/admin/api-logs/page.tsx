@@ -31,7 +31,7 @@ export default async function ApiLogsPage() {
   // Calculate totals
   const totalCost =
     logs?.reduce(
-      (sum, log) => sum + (parseFloat(log.estimated_cost) || 0),
+      (sum, log) => sum + (log.estimated_cost || 0),
       0
     ) || 0;
   const totalTokens =
@@ -125,7 +125,7 @@ export default async function ApiLogsPage() {
                 {logs?.map((log) => (
                   <tr key={log.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {new Date(log.created_at).toLocaleString()}
+                      {log.created_at && new Date(log.created_at).toLocaleString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       <Link
@@ -157,7 +157,7 @@ export default async function ApiLogsPage() {
                       {log.items_parsed}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      {log.items_enhanced > 0 ? (
+                      {log.items_enhanced ? (
                         <span className="text-emerald-600 font-medium">
                           {log.items_enhanced}
                         </span>
@@ -177,7 +177,7 @@ export default async function ApiLogsPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      ${parseFloat(log.estimated_cost).toFixed(4)}
+                      ${(log.estimated_cost || 0).toFixed(4)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       <details className="cursor-pointer">

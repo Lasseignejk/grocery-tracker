@@ -54,7 +54,7 @@ export default function EditItem({ item }: EditItemProps) {
   const [totalPrice, setTotalPrice] = useState(
     item.total_price?.toString() || '0'
   );
-  const [wasOnSale, setWasOnSale] = useState(item.was_on_sale);
+  const [wasOnSale, setWasOnSale] = useState(item.was_on_sale ?? false);
   const [category, setCategory] = useState(item.category || 'other');
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -127,7 +127,7 @@ export default function EditItem({ item }: EditItemProps) {
     setQuantity(item.quantity?.toString() || '1');
     setUnitPrice(item.unit_price?.toString() || '0');
     setTotalPrice(item.total_price?.toString() || '0');
-    setWasOnSale(item.was_on_sale);
+    setWasOnSale(item.was_on_sale ?? false);
     setCategory(item.category || 'other');
     setIsEditing(false);
     setError(null);

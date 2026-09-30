@@ -20,7 +20,7 @@ interface TopItemsGroupedProps {
   groupedByBrand: GroupedItem[];
   groupedByGeneric: GroupedItem[];
   ungroupedItems: Array<{
-    item_name: string;
+    display_name: string;
     total_spent: number;
     total_quantity: number; // ✅ NEW
     purchase_count: number;

@@ -167,7 +167,7 @@ export default async function AnalyticsPage() {
               });
             }
             return acc;
-          }, {} as Record<string, { total_spent: number; purchase_count: number; items: Array<{ item_name: string; total_spent: number; purchase_count: number }> }>)
+          }, {} as Record<string, { total_spent: number; total_quantity: number; purchase_count: number; items: Array<{ item_name: string; total_spent: number; total_quantity: number; purchase_count: number }> }>)
       )
         .map(([display_name, data]) => ({
           display_name,
