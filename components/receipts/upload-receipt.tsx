@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { uploadAndParseReceipt } from '@/lib/receipt-upload';
 
 export default function UploadReceipt() {
   const [file, setFile] = useState<File | null>(null);
@@ -10,8 +11,8 @@ export default function UploadReceipt() {
   const [uploading, setUploading] = useState(false);
   const [parsing, setParsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const router = useRouter();
-  const supabase = createClient();
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -22,14 +23,9 @@ export default function UploadReceipt() {
         return;
       }
 
-      // Check file size (max 5MB)
-      if (selectedFile.size > 5 * 1024 * 1024) {
-        setError('File size must be less than 5MB');
-        return;
-      }
-
       setFile(selectedFile);
       setError(null);
+      setWarning(null);
 
       // Create preview
       const reader = new FileReader();
@@ -45,113 +41,25 @@ export default function UploadReceipt() {
 
     setUploading(true);
     setError(null);
-
-    let receiptId: string | null = null;
-    let uploadedFilePath: string | null = null;
+    setWarning(null);
 
     try {
-      // Get current user
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
-        setError('You must be logged in to upload receipts');
-        setUploading(false);
-        return;
-      }
-
-      // Create unique filename
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${user.id}/${Date.now()}.${fileExt}`;
-      uploadedFilePath = fileName;
-
-      // Upload to Supabase Storage
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('receipt-images')
-        .upload(fileName, file);
-
-      if (uploadError) throw uploadError;
-
-      // Get public URL
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from('receipt-images').getPublicUrl(fileName);
-
-      // Create receipt record WITHOUT store_name (to prevent "Processing..." from being created)
-      const { data: receiptData, error: dbError } = await supabase
-        .from('receipts')
-        .insert({
-          user_id: user.id,
-          image_url: publicUrl,
-          store_name: null, // ✅ Changed from "Processing..."
-          purchase_date: null, // Filled in by the parser if the date is readable
-          total_amount: 0,
-        })
-        .select()
-        .single();
-
-      if (dbError) throw dbError;
-
-      receiptId = receiptData.id;
-
-      setUploading(false);
-      setParsing(true);
-
-      // Call API to parse receipt
-      const parseResponse = await fetch('/api/parse-receipt', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          receiptId: receiptData.id,
-        }),
+      const result = await uploadAndParseReceipt(file, (stage) => {
+        setUploading(stage !== 'parsing');
+        setParsing(stage === 'parsing');
       });
 
-      const parseResult = await parseResponse.json();
-
-      if (!parseResponse.ok) {
-        // Parsing failed - clean up the receipt record
-        console.error('Parsing failed:', parseResult.error);
-
-        // Delete the receipt record
-        await supabase.from('receipts').delete().eq('id', receiptData.id);
-
-        // Delete the uploaded image
-        if (uploadedFilePath) {
-          await supabase.storage
-            .from('receipt-images')
-            .remove([uploadedFilePath]);
-        }
-
-        throw new Error(parseResult.error || 'Failed to parse receipt');
-      }
-
-      // Success!
       setFile(null);
       setPreview(null);
-      setParsing(false);
+      setWarning(result.warning);
 
       // Refresh the page to show new receipt
       router.refresh();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to process receipt');
+    } finally {
       setUploading(false);
       setParsing(false);
-
-      // If we have a receiptId but parsing failed, try to clean up
-      if (receiptId) {
-        try {
-          await supabase.from('receipts').delete().eq('id', receiptId);
-          if (uploadedFilePath) {
-            await supabase.storage
-              .from('receipt-images')
-              .remove([uploadedFilePath]);
-          }
-        } catch (cleanupError) {
-          console.error('Failed to clean up after error:', cleanupError);
-        }
-      }
     }
   };
 
@@ -159,7 +67,15 @@ export default function UploadReceipt() {
 
   return (
     <div className="bg-white rounded-lg shadow p-6">
-      <h2 className="text-xl font-bold mb-4">Upload Receipt</h2>
+      <div className="flex items-baseline justify-between mb-4">
+        <h2 className="text-xl font-bold">Upload Receipt</h2>
+        <Link
+          href="/receipts/import"
+          className="text-sm text-blue-600 hover:text-blue-700"
+        >
+          Have a lot? Bulk import →
+        </Link>
+      </div>
 
       {/* File Input */}
       <div className="mb-4">
@@ -192,7 +108,7 @@ export default function UploadReceipt() {
                 <span className="font-semibold">Click to upload</span> or drag
                 and drop
               </p>
-              <p className="text-xs text-gray-500">PNG, JPG, JPEG (MAX. 5MB)</p>
+              <p className="text-xs text-gray-500">PNG, JPG, JPEG</p>
             </div>
           )}
           <input
@@ -243,6 +159,14 @@ export default function UploadReceipt() {
               </p>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Parsed, but the items don't add up to the total */}
+      {warning && (
+        <div className="mb-4 p-3 bg-amber-50 text-amber-800 rounded-lg text-sm">
+          <p className="font-medium mb-1">Check the prices</p>
+          <p>{warning}</p>
         </div>
       )}
 

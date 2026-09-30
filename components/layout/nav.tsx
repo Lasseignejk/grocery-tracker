@@ -53,6 +53,12 @@ export default function Nav({ userEmail, isAdmin }: NavProps) {
                 <Link href="/dashboard" className={getLinkClass('/dashboard')}>
                   Receipts
                 </Link>
+                <Link
+                  href="/receipts/import"
+                  className={getLinkClass('/receipts/import')}
+                >
+                  Import
+                </Link>
                 <Link href="/analytics" className={getLinkClass('/analytics')}>
                   Analytics
                 </Link>
