@@ -52,14 +52,16 @@ export async function prepareImage(file: File): Promise<Blob> {
   );
 }
 
-// Uploads a receipt photo, creates the receipt and parses it. If anything
-// fails after the upload, the receipt and image are removed again so a
+// Uploads a receipt's photo(s), creates the receipt and parses it. Pass
+// several files when one long receipt was photographed in parts. If anything
+// fails after uploading, the receipt and images are removed again so a
 // failed attempt leaves nothing behind.
 export async function uploadAndParseReceipt(
-  file: File,
+  files: File | File[],
   onStage?: (stage: UploadStage) => void
 ): Promise<ParsedReceiptSummary> {
   const supabase = createClient();
+  const fileList = Array.isArray(files) ? files : [files];
 
   const {
     data: { user },
@@ -67,27 +69,33 @@ export async function uploadAndParseReceipt(
   if (!user) throw new Error('You must be logged in to upload receipts');
 
   onStage?.('preparing');
-  const image = await prepareImage(file);
-  const extension = image.type === 'image/jpeg' ? 'jpg' : file.name.split('.').pop();
-  const filePath = `${user.id}/${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${extension}`;
+  const images = await Promise.all(fileList.map(prepareImage));
 
   onStage?.('uploading');
-  const { error: uploadError } = await supabase.storage
-    .from('receipt-images')
-    .upload(filePath, image, { contentType: image.type || file.type });
-  if (uploadError) throw uploadError;
-
+  const filePaths: string[] = [];
   let receiptId: string | null = null;
   try {
-    const {
-      data: { publicUrl },
-    } = supabase.storage.from('receipt-images').getPublicUrl(filePath);
+    for (const [index, image] of images.entries()) {
+      const extension =
+        image.type === 'image/jpeg' ? 'jpg' : fileList[index].name.split('.').pop();
+      const filePath = `${user.id}/${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${extension}`;
+      const { error: uploadError } = await supabase.storage
+        .from('receipt-images')
+        .upload(filePath, image, { contentType: image.type || fileList[index].type });
+      if (uploadError) throw uploadError;
+      filePaths.push(filePath);
+    }
+
+    const [imageUrl, ...additionalImageUrls] = filePaths.map(
+      (path) => supabase.storage.from('receipt-images').getPublicUrl(path).data.publicUrl
+    );
 
     const { data: receipt, error: insertError } = await supabase
       .from('receipts')
       .insert({
         user_id: user.id,
-        image_url: publicUrl,
+        image_url: imageUrl,
+        additional_image_urls: additionalImageUrls,
         store_name: null,
         purchase_date: null, // Filled in by the parser if the date is readable
         total_amount: 0,
@@ -108,24 +116,64 @@ export async function uploadAndParseReceipt(
       throw new Error(result.error || `Failed to parse receipt (HTTP ${response.status})`);
     }
 
-    return {
-      receiptId: receipt.id,
-      storeName: result.data?.store_name ?? null,
-      purchaseDate: result.data?.purchase_date ?? null,
-      totalAmount: result.data?.total_amount ?? null,
-      itemCount: result.data?.items?.length ?? 0,
-      needsReview: Boolean(result.needsReview),
-      warning: result.warning ?? null,
-    };
+    return toSummary(receipt.id, result);
   } catch (error) {
     try {
       if (receiptId) await supabase.from('receipts').delete().eq('id', receiptId);
-      await supabase.storage.from('receipt-images').remove([filePath]);
+      if (filePaths.length > 0) {
+        await supabase.storage.from('receipt-images').remove(filePaths);
+      }
     } catch (cleanupError) {
       console.error('Failed to clean up after error:', cleanupError);
     }
     throw error;
   }
+}
+
+interface ParseResponse {
+  data?: {
+    store_name?: string | null;
+    purchase_date?: string | null;
+    total_amount?: number | null;
+    items?: unknown[];
+  };
+  needsReview?: boolean;
+  warning?: string | null;
+}
+
+function toSummary(receiptId: string, result: ParseResponse): ParsedReceiptSummary {
+  return {
+    receiptId,
+    storeName: result.data?.store_name ?? null,
+    purchaseDate: result.data?.purchase_date ?? null,
+    totalAmount: result.data?.total_amount ?? null,
+    itemCount: result.data?.items?.length ?? 0,
+    needsReview: Boolean(result.needsReview),
+    warning: result.warning ?? null,
+  };
+}
+
+// Combines receipts that are really parts of one long receipt into the first
+// one, re-parsing it from all of their photos
+export async function mergeReceipts(receiptIds: string[]): Promise<ParsedReceiptSummary> {
+  const response = await fetch('/api/merge-receipts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ receiptIds }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(result.error || `Failed to combine receipts (HTTP ${response.status})`);
+  }
+  return toSummary(result.receiptId, result);
+}
+
+// A photo of only part of a long receipt parses without a total (top half)
+// or without a store name (bottom half), and its items can't add up
+export function looksLikePartOfReceipt(receipt: ParsedReceiptSummary): boolean {
+  const missingTotal = !receipt.totalAmount;
+  const missingStore = !receipt.storeName || receipt.storeName === 'Unknown';
+  return receipt.needsReview && (missingTotal || missingStore);
 }
 
 export interface PossibleDuplicate {

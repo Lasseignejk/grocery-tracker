@@ -161,6 +161,7 @@ export type Database = {
       }
       receipts: {
         Row: {
+          additional_image_urls: string[]
           created_at: string
           id: string
           image_url: string | null
@@ -171,6 +172,7 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          additional_image_urls?: string[]
           created_at?: string
           id?: string
           image_url?: string | null
@@ -181,6 +183,7 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          additional_image_urls?: string[]
           created_at?: string
           id?: string
           image_url?: string | null

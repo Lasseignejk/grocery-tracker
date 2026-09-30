@@ -39,6 +39,8 @@ export interface ParsedReceipt {
   subtotal: number | null;
   tax: number | null;
   total_amount: number | null;
+  // Discounts on the whole order rather than one item, e.g. loyalty rewards
+  order_discounts: number;
   items: ParsedItem[];
 }
 
@@ -73,7 +75,9 @@ const RECEIPT_SCHEMA = {
   schema: {
     type: 'object',
     additionalProperties: false,
-    required: ['store_name', 'purchase_date', 'subtotal', 'tax', 'total_amount', 'items'],
+    required: [
+      'store_name', 'purchase_date', 'subtotal', 'tax', 'total_amount', 'order_discounts', 'items',
+    ],
     properties: {
       store_name: nullableString,
       purchase_date: {
@@ -83,6 +87,11 @@ const RECEIPT_SCHEMA = {
       subtotal: { ...nullableNumber, description: 'Subtotal before tax as printed, or null' },
       tax: { ...nullableNumber, description: 'Total sales tax as printed, or null' },
       total_amount: { ...nullableNumber, description: 'Final amount paid' },
+      order_discounts: {
+        type: 'number',
+        description:
+          "Total of discounts that apply to the whole order rather than a specific item (e.g. rewards like 'Shop&Earn SAVINGS', order coupons), as a positive number. 0 if none. Don't include discounts already subtracted from an item's price.",
+      },
       items: {
         type: 'array',
         items: {
@@ -211,6 +220,15 @@ EXAMPLE (correct format):
   ]
 }`;
 
+// Added when a long receipt was photographed in several parts
+const multiPartNote = (count: number) => `
+
+MULTIPLE PHOTOS:
+These ${count} photos are parts of ONE long receipt. They may be in any order and may overlap, so the same lines can appear in more than one photo. Combine them into a single receipt:
+- List every purchased item exactly once. Don't repeat items that appear in two overlapping photos.
+- Take the store name and date from whichever photo shows them.
+- Take the subtotal, tax and total from whichever photo shows them.`;
+
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 export function sumItems(receipt: ParsedReceipt): number {
@@ -221,15 +239,18 @@ export function sumItems(receipt: ParsedReceipt): number {
 // no tax. Any of those matching within a cent counts.
 export function itemsMatchTotal(
   itemsSum: number,
-  totals: Pick<ParsedReceipt, 'subtotal' | 'tax' | 'total_amount'>
+  totals: Pick<ParsedReceipt, 'subtotal' | 'tax' | 'total_amount'> & {
+    order_discounts?: number | null;
+  }
 ): boolean {
   const { subtotal, tax, total_amount } = totals;
+  const sum = itemsSum - (totals.order_discounts ?? 0);
   const targets = [
     subtotal,
     total_amount,
     total_amount != null && tax != null ? total_amount - tax : null,
   ].filter((n): n is number => typeof n === 'number');
-  return targets.some((target) => Math.abs(target - itemsSum) < 0.015);
+  return targets.some((target) => Math.abs(target - sum) < 0.015);
 }
 
 function totalsMatch(receipt: ParsedReceipt): boolean {
@@ -238,13 +259,13 @@ function totalsMatch(receipt: ParsedReceipt): boolean {
 
 function mismatch(receipt: ParsedReceipt): number {
   const target = receipt.subtotal ?? receipt.total_amount ?? 0;
-  return Math.abs(target - sumItems(receipt));
+  return Math.abs(target - (sumItems(receipt) - (receipt.order_discounts ?? 0)));
 }
 
 async function callModel(
   openai: OpenAI,
   config: ModelConfig,
-  imageUrl: string
+  imageUrls: string[]
 ): Promise<{ attempt: ParseAttempt; data: ParsedReceipt | null }> {
   const attempt: ParseAttempt = {
     model: config.model,
@@ -269,8 +290,14 @@ async function callModel(
         {
           role: 'user',
           content: [
-            { type: 'text', text: PROMPT },
-            { type: 'image_url', image_url: { url: imageUrl, detail: 'high' } },
+            {
+              type: 'text',
+              text: imageUrls.length > 1 ? PROMPT + multiPartNote(imageUrls.length) : PROMPT,
+            },
+            ...imageUrls.map((url) => ({
+              type: 'image_url' as const,
+              image_url: { url, detail: 'high' as const },
+            })),
           ],
         },
       ],
@@ -304,16 +331,17 @@ async function callModel(
 
 // Parses with the primary model, and asks the fallback model for a second
 // opinion when the primary fails or its items don't add up to the total.
-export async function parseReceiptImage(
-  imageUrl: string,
+// Pass several URLs when one receipt was photographed in parts.
+export async function parseReceiptImages(
+  imageUrls: string[],
   openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 ): Promise<ParseResult> {
-  const primary = await callModel(openai, PRIMARY, imageUrl);
+  const primary = await callModel(openai, PRIMARY, imageUrls);
   const attempts = [primary.attempt];
   let best = primary.data;
 
   if (!best || !primary.attempt.totals_match) {
-    const fallback = await callModel(openai, FALLBACK, imageUrl);
+    const fallback = await callModel(openai, FALLBACK, imageUrls);
     attempts.push(fallback.attempt);
 
     if (fallback.data) {

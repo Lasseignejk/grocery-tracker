@@ -51,7 +51,11 @@ export default async function ReceiptDetailPage({
     Math.round(
       (items ?? []).reduce((sum, item) => sum + (item.total_price || 0), 0) * 100
     ) / 100;
-  let parsedTotals: { subtotal?: number | null; tax?: number | null } = {};
+  let parsedTotals: {
+    subtotal?: number | null;
+    tax?: number | null;
+    order_discounts?: number | null;
+  } = {};
   try {
     parsedTotals = receipt.raw_text ? JSON.parse(receipt.raw_text) : {};
   } catch {
@@ -63,6 +67,7 @@ export default async function ReceiptDetailPage({
     !itemsMatchTotal(itemsSum, {
       subtotal: parsedTotals.subtotal ?? null,
       tax: parsedTotals.tax ?? null,
+      order_discounts: parsedTotals.order_discounts ?? 0,
       total_amount: receipt.total_amount,
     });
 
@@ -102,14 +107,23 @@ export default async function ReceiptDetailPage({
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Receipt Image */}
           <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-xl font-bold mb-4">Receipt Image</h2>
-            {receipt.image_url && (
-              <img
-                src={receipt.image_url}
-                alt="Receipt"
-                className="w-full rounded-lg"
-              />
-            )}
+            <h2 className="text-xl font-bold mb-4">
+              {receipt.additional_image_urls.length > 0
+                ? `Receipt Photos (${receipt.additional_image_urls.length + 1})`
+                : 'Receipt Image'}
+            </h2>
+            <div className="space-y-4">
+              {[receipt.image_url, ...receipt.additional_image_urls]
+                .filter(Boolean)
+                .map((url, index) => (
+                  <img
+                    key={url}
+                    src={url!}
+                    alt={`Receipt photo ${index + 1}`}
+                    className="w-full rounded-lg"
+                  />
+                ))}
+            </div>
           </div>
 
           {/* Receipt Details */}

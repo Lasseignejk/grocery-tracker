@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   findPossibleDuplicate,
+  looksLikePartOfReceipt,
+  mergeReceipts,
   uploadAndParseReceipt,
   type ParsedReceiptSummary,
   type PossibleDuplicate,
@@ -16,10 +18,11 @@ const CONCURRENCY = 3;
 
 type Status = 'queued' | 'preparing' | 'uploading' | 'parsing' | 'done' | 'failed';
 
+// One receipt, which may have been photographed in several parts
 interface Entry {
   id: string;
-  file: File;
-  previewUrl: string;
+  files: File[];
+  previewUrls: string[];
   status: Status;
   error: string | null;
   result: ParsedReceiptSummary | null;
@@ -51,15 +54,33 @@ function formatDate(dateString: string | null): string {
   });
 }
 
+// Neighbouring receipts that both failed the totals check, where at least one
+// is missing its total or store, are probably two photos of one receipt
+function findSuggestedPairs(entries: Entry[]): Map<string, string> {
+  const pairs = new Map<string, string>();
+  for (let i = 0; i < entries.length - 1; i++) {
+    const [a, b] = [entries[i].result, entries[i + 1].result];
+    if (!a || !b || !a.needsReview || !b.needsReview) continue;
+    if (!looksLikePartOfReceipt(a) && !looksLikePartOfReceipt(b)) continue;
+    pairs.set(entries[i].id, entries[i + 1].id);
+    i++; // each receipt is suggested at most once
+  }
+  return pairs;
+}
+
 export default function BulkImport() {
   const [entries, setEntries] = useState<Entry[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [running, setRunning] = useState(false);
+  const [merging, setMerging] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [skippedCount, setSkippedCount] = useState(0);
+  const [notice, setNotice] = useState<string | null>(null);
   const entriesRef = useRef<Entry[]>([]);
   const router = useRouter();
 
   entriesRef.current = entries;
+  const busy = running || merging;
 
   const updateEntry = useCallback((id: string, changes: Partial<Entry>) => {
     setEntries((current) =>
@@ -69,23 +90,24 @@ export default function BulkImport() {
 
   // Closing the tab stops the import, since it runs in the browser
   useEffect(() => {
-    if (!running) return;
+    if (!busy) return;
     const warn = (event: BeforeUnloadEvent) => {
       event.preventDefault();
     };
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
-  }, [running]);
+  }, [busy]);
 
   // Free the preview images when leaving the page
   useEffect(
-    () => () => entriesRef.current.forEach((entry) => URL.revokeObjectURL(entry.previewUrl)),
+    () => () =>
+      entriesRef.current.forEach((entry) => entry.previewUrls.forEach(URL.revokeObjectURL)),
     []
   );
 
   const addFiles = (fileList: FileList | null) => {
     if (!fileList) return;
-    const existing = new Set(entriesRef.current.map((entry) => fileKey(entry.file)));
+    const existing = new Set(entriesRef.current.flatMap((entry) => entry.files.map(fileKey)));
     const added: Entry[] = [];
     let skipped = 0;
 
@@ -97,8 +119,8 @@ export default function BulkImport() {
       existing.add(fileKey(file));
       added.push({
         id: crypto.randomUUID(),
-        file,
-        previewUrl: URL.createObjectURL(file),
+        files: [file],
+        previewUrls: [URL.createObjectURL(file)],
         status: 'queued',
         error: null,
         result: null,
@@ -111,15 +133,106 @@ export default function BulkImport() {
   };
 
   const removeEntry = (id: string) => {
-    const entry = entriesRef.current.find((e) => e.id === id);
-    if (entry) URL.revokeObjectURL(entry.previewUrl);
+    entriesRef.current.find((e) => e.id === id)?.previewUrls.forEach(URL.revokeObjectURL);
     setEntries((current) => current.filter((e) => e.id !== id));
+    setSelected((current) => {
+      const next = new Set(current);
+      next.delete(id);
+      return next;
+    });
+  };
+
+  const toggleSelected = (id: string) =>
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  // Before import: turn the selected photos into one multi-photo receipt,
+  // in the order they appear in the grid
+  const groupQueued = (ids: string[]) => {
+    const group = entriesRef.current.filter((e) => ids.includes(e.id));
+    const combined: Entry = {
+      ...group[0],
+      files: group.flatMap((e) => e.files),
+      previewUrls: group.flatMap((e) => e.previewUrls),
+    };
+    setEntries((current) =>
+      current
+        .filter((e) => e === group[0] || !ids.includes(e.id))
+        .map((e) => (e.id === combined.id ? combined : e))
+    );
+  };
+
+  // Undo a grouping before import
+  const splitQueued = (id: string) => {
+    const entry = entriesRef.current.find((e) => e.id === id);
+    if (!entry) return;
+    const parts: Entry[] = entry.files.map((file, index) => ({
+      ...entry,
+      id: index === 0 ? entry.id : crypto.randomUUID(),
+      files: [file],
+      previewUrls: [entry.previewUrls[index]],
+    }));
+    setEntries((current) => current.flatMap((e) => (e.id === id ? parts : [e])));
+  };
+
+  // After import: merge receipts that turned out to be parts of one receipt
+  const mergeDone = async (ids: string[]) => {
+    const group = entriesRef.current.filter((e) => ids.includes(e.id) && e.result);
+    if (group.length < 2) return;
+    const [first, ...rest] = group;
+
+    setMerging(true);
+    setNotice(null);
+    updateEntry(first.id, { status: 'parsing', error: null });
+    try {
+      const result = await mergeReceipts(group.map((e) => e.result!.receiptId));
+      const duplicate = await findPossibleDuplicate(result);
+      setEntries((current) =>
+        current
+          .filter((e) => !rest.some((r) => r.id === e.id))
+          .map((e) =>
+            e.id === first.id
+              ? {
+                  ...e,
+                  files: group.flatMap((g) => g.files),
+                  previewUrls: group.flatMap((g) => g.previewUrls),
+                  status: 'done',
+                  result,
+                  duplicate,
+                }
+              : e
+          )
+      );
+      router.refresh();
+    } catch (err: unknown) {
+      // The receipts are left exactly as they were
+      updateEntry(first.id, { status: 'done' });
+      setNotice(
+        `Couldn't combine those receipts: ${err instanceof Error ? err.message : 'something went wrong'}`
+      );
+    } finally {
+      setMerging(false);
+    }
+  };
+
+  const combineSelected = () => {
+    const ids = entries.filter((e) => selected.has(e.id)).map((e) => e.id);
+    setSelected(new Set());
+    if (entries.filter((e) => ids.includes(e.id)).every((e) => e.status === 'queued')) {
+      groupQueued(ids);
+    } else {
+      mergeDone(ids);
+    }
   };
 
   const processEntry = async (entry: Entry) => {
     updateEntry(entry.id, { status: 'preparing', error: null });
     try {
-      const result = await uploadAndParseReceipt(entry.file, (stage) =>
+      const result = await uploadAndParseReceipt(entry.files, (stage) =>
         updateEntry(entry.id, { status: stage })
       );
       const duplicate = await findPossibleDuplicate(result);
@@ -135,6 +248,7 @@ export default function BulkImport() {
   // Works through the given entries, CONCURRENCY at a time
   const runQueue = async (queue: Entry[]) => {
     setRunning(true);
+    setSelected(new Set());
     let next = 0;
     const worker = async () => {
       while (next < queue.length) {
@@ -155,9 +269,18 @@ export default function BulkImport() {
   const clearFinished = () => {
     entriesRef.current
       .filter((entry) => entry.status === 'done')
-      .forEach((entry) => URL.revokeObjectURL(entry.previewUrl));
+      .forEach((entry) => entry.previewUrls.forEach(URL.revokeObjectURL));
     setEntries((current) => current.filter((entry) => entry.status !== 'done'));
+    setSelected(new Set());
   };
+
+  const suggestedPairs = busy ? new Map<string, string>() : findSuggestedPairs(entries);
+  const selectedEntries = entries.filter((e) => selected.has(e.id));
+  const canCombine =
+    !busy &&
+    selectedEntries.length >= 2 &&
+    (selectedEntries.every((e) => e.status === 'queued') ||
+      selectedEntries.every((e) => e.status === 'done'));
 
   const counts = {
     total: entries.length,
@@ -233,6 +356,8 @@ export default function BulkImport() {
               <p className="font-medium">
                 {running
                   ? `Importing… ${finished} of ${counts.total} finished`
+                  : merging
+                  ? 'Combining receipts…'
                   : started
                   ? `${counts.done} imported${counts.failed ? `, ${counts.failed} failed` : ''}`
                   : `${counts.total} receipt${counts.total !== 1 ? 's' : ''} ready to import`}
@@ -245,13 +370,31 @@ export default function BulkImport() {
                   />
                 </div>
               )}
-              {running && (
+              {busy ? (
                 <p className="text-xs text-gray-500 mt-1">
-                  Keep this tab open until the import finishes.
+                  Keep this tab open until it finishes.
+                </p>
+              ) : (
+                <p className="text-xs text-gray-500 mt-1">
+                  Long receipt in several photos? Tick them and choose Combine.
                 </p>
               )}
             </div>
-            {counts.queued > 0 && !running && (
+            {selectedEntries.length > 0 && (
+              <button
+                onClick={combineSelected}
+                disabled={!canCombine}
+                title={
+                  canCombine
+                    ? undefined
+                    : 'Select two or more photos that are all waiting, or all imported'
+                }
+                className="py-2 px-4 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 disabled:border-gray-300 disabled:text-gray-400 disabled:hover:bg-transparent transition-colors"
+              >
+                Combine {selectedEntries.length} into one receipt
+              </button>
+            )}
+            {counts.queued > 0 && !busy && (
               <button
                 onClick={importQueued}
                 className="bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors"
@@ -259,7 +402,7 @@ export default function BulkImport() {
                 Import {counts.queued} receipt{counts.queued !== 1 ? 's' : ''}
               </button>
             )}
-            {counts.failed > 0 && !running && (
+            {counts.failed > 0 && !busy && (
               <button
                 onClick={retryFailed}
                 className="py-2 px-4 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
@@ -267,7 +410,7 @@ export default function BulkImport() {
                 Retry {counts.failed} failed
               </button>
             )}
-            {counts.done > 0 && !running && (
+            {counts.done > 0 && !busy && (
               <button
                 onClick={clearFinished}
                 className="py-2 px-4 text-sm text-gray-600 hover:text-gray-900"
@@ -277,12 +420,22 @@ export default function BulkImport() {
             )}
           </div>
 
+          {notice && (
+            <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">{notice}</div>
+          )}
+
           {/* Summary once everything has been processed */}
-          {!running && started && counts.queued === 0 && (
+          {!busy && started && counts.queued === 0 && (
             <div className="bg-white rounded-lg shadow p-4 text-sm space-y-1">
               <p className="font-medium text-base mb-2">Import summary</p>
               <p>✅ {counts.done} receipt{counts.done !== 1 ? 's' : ''} imported</p>
               {counts.failed > 0 && <p>❌ {counts.failed} failed. You can retry them above.</p>}
+              {suggestedPairs.size > 0 && (
+                <p>
+                  🧩 {suggestedPairs.size} pair{suggestedPairs.size !== 1 ? 's' : ''} of photos look
+                  like parts of one receipt. Combine them below.
+                </p>
+              )}
               {counts.needsReview > 0 && (
                 <p>⚠️ {counts.needsReview} need a price check (items don&apos;t add up to the total)</p>
               )}
@@ -302,84 +455,122 @@ export default function BulkImport() {
 
           {/* Per-receipt status */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-            {entries.map((entry) => (
-              <div key={entry.id} className="bg-white rounded-lg shadow overflow-hidden flex flex-col">
-                <div className="relative aspect-[3/4] bg-gray-100">
-                  <img
-                    src={entry.previewUrl}
-                    alt={entry.file.name}
-                    className={`w-full h-full object-cover ${isActive(entry.status) ? 'opacity-60' : ''}`}
-                  />
-                  {entry.status === 'queued' && !running && (
-                    <button
-                      onClick={() => removeEntry(entry.id)}
-                      className="absolute top-2 right-2 w-7 h-7 rounded-full bg-white/90 text-gray-700 hover:bg-white shadow text-sm"
-                      aria-label={`Remove ${entry.file.name}`}
-                    >
-                      ✕
-                    </button>
-                  )}
-                  {isActive(entry.status) && (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <svg className="animate-spin h-8 w-8 text-blue-600" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                      </svg>
-                    </div>
-                  )}
-                </div>
-                <div className="p-3 text-sm flex-1">
-                  {entry.status === 'done' && entry.result ? (
-                    <>
-                      <Link
-                        href={`/receipts/${entry.result.receiptId}`}
-                        className="font-semibold text-blue-600 hover:text-blue-700"
+            {entries.map((entry) => {
+              const pairedWith = suggestedPairs.get(entry.id);
+              const selectable = !busy && (entry.status === 'queued' || entry.status === 'done');
+              return (
+                <div
+                  key={entry.id}
+                  className={`bg-white rounded-lg shadow overflow-hidden flex flex-col ${
+                    selected.has(entry.id) ? 'ring-2 ring-blue-500' : ''
+                  }`}
+                >
+                  <div className="relative aspect-[3/4] bg-gray-100">
+                    <img
+                      src={entry.previewUrls[0]}
+                      alt={entry.files[0].name}
+                      className={`w-full h-full object-cover ${isActive(entry.status) ? 'opacity-60' : ''}`}
+                    />
+                    {selectable && (
+                      <label className="absolute top-2 left-2 flex items-center justify-center w-7 h-7 rounded bg-white/90 shadow cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selected.has(entry.id)}
+                          onChange={() => toggleSelected(entry.id)}
+                          aria-label={`Select ${entry.files[0].name}`}
+                        />
+                      </label>
+                    )}
+                    {entry.files.length > 1 && (
+                      <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-black/70 text-white text-xs">
+                        📄 {entry.files.length} photos
+                      </span>
+                    )}
+                    {entry.status === 'queued' && !busy && (
+                      <button
+                        onClick={() => removeEntry(entry.id)}
+                        className="absolute top-2 right-2 w-7 h-7 rounded-full bg-white/90 text-gray-700 hover:bg-white shadow text-sm"
+                        aria-label={`Remove ${entry.files[0].name}`}
                       >
-                        {entry.result.storeName || 'Unknown store'}
-                      </Link>
-                      <p className="text-gray-600">
-                        {formatDate(entry.result.purchaseDate)} ·{' '}
-                        {entry.result.totalAmount != null
-                          ? `$${entry.result.totalAmount.toFixed(2)}`
-                          : 'No total'}
-                      </p>
-                      <p className="text-gray-500">{entry.result.itemCount} items</p>
-                      {entry.result.needsReview && (
-                        <p className="mt-1 text-amber-700">⚠️ Check prices</p>
-                      )}
-                      {entry.duplicate && (
-                        <p className="mt-1 text-amber-700">
-                          🔁 Possible duplicate of{' '}
-                          <Link
-                            href={`/receipts/${entry.duplicate.id}`}
-                            className="underline hover:text-amber-900"
-                          >
-                            {entry.duplicate.storeName || 'a receipt'}
-                            {entry.duplicate.purchaseDate
-                              ? ` (${formatDate(entry.duplicate.purchaseDate)})`
-                              : ''}
-                          </Link>
+                        ✕
+                      </button>
+                    )}
+                    {isActive(entry.status) && (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <svg className="animate-spin h-8 w-8 text-blue-600" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-3 text-sm flex-1">
+                    {entry.status === 'done' && entry.result ? (
+                      <>
+                        <Link
+                          href={`/receipts/${entry.result.receiptId}`}
+                          className="font-semibold text-blue-600 hover:text-blue-700"
+                        >
+                          {entry.result.storeName || 'Unknown store'}
+                        </Link>
+                        <p className="text-gray-600">
+                          {formatDate(entry.result.purchaseDate)} ·{' '}
+                          {entry.result.totalAmount
+                            ? `$${entry.result.totalAmount.toFixed(2)}`
+                            : 'No total'}
                         </p>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <p className="truncate text-gray-700" title={entry.file.name}>
-                        {entry.file.name}
-                      </p>
-                      <p
-                        className={
-                          entry.status === 'failed' ? 'text-red-600' : 'text-gray-500'
-                        }
-                      >
-                        {STATUS_LABELS[entry.status]}
-                      </p>
-                      {entry.error && <p className="mt-1 text-xs text-red-600">{entry.error}</p>}
-                    </>
-                  )}
+                        <p className="text-gray-500">{entry.result.itemCount} items</p>
+                        {pairedWith ? (
+                          <button
+                            onClick={() => mergeDone([entry.id, pairedWith])}
+                            className="mt-2 w-full py-1.5 px-2 rounded bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-medium text-left"
+                          >
+                            🧩 This and the next photo look like one receipt. Combine them
+                          </button>
+                        ) : (
+                          entry.result.needsReview && (
+                            <p className="mt-1 text-amber-700">⚠️ Check prices</p>
+                          )
+                        )}
+                        {entry.duplicate && (
+                          <p className="mt-1 text-amber-700">
+                            🔁 Possible duplicate of{' '}
+                            <Link
+                              href={`/receipts/${entry.duplicate.id}`}
+                              className="underline hover:text-amber-900"
+                            >
+                              {entry.duplicate.storeName || 'a receipt'}
+                              {entry.duplicate.purchaseDate
+                                ? ` (${formatDate(entry.duplicate.purchaseDate)})`
+                                : ''}
+                            </Link>
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <p className="truncate text-gray-700" title={entry.files.map((f) => f.name).join(', ')}>
+                          {entry.files[0].name}
+                          {entry.files.length > 1 ? ` + ${entry.files.length - 1} more` : ''}
+                        </p>
+                        <p className={entry.status === 'failed' ? 'text-red-600' : 'text-gray-500'}>
+                          {STATUS_LABELS[entry.status]}
+                        </p>
+                        {entry.error && <p className="mt-1 text-xs text-red-600">{entry.error}</p>}
+                        {entry.status === 'queued' && entry.files.length > 1 && !busy && (
+                          <button
+                            onClick={() => splitQueued(entry.id)}
+                            className="mt-1 text-xs text-blue-600 hover:text-blue-700"
+                          >
+                            Split back into separate receipts
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </>
       )}

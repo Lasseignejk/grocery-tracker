@@ -37,20 +37,37 @@ export async function DELETE(request: Request) {
       );
     }
 
-    // Delete the image from storage if it exists
-    if (receipt.image_url) {
-      // Extract the file path from the URL
-      // URL format: https://xxx.supabase.co/storage/v1/object/public/receipt-images/user_id/filename.jpg
-      const urlParts = receipt.image_url.split('/receipt-images/');
-      if (urlParts.length > 1) {
-        const filePath = urlParts[1];
+    // Delete the receipt's photos from storage, except any another receipt
+    // still uses (e.g. after an interrupted merge)
+    const imageUrls = [receipt.image_url, ...receipt.additional_image_urls].filter(
+      (url): url is string => Boolean(url)
+    );
+    if (imageUrls.length > 0) {
+      const { data: sharing, error: sharingError } = await supabase
+        .from('receipts')
+        .select('image_url, additional_image_urls')
+        .neq('id', receiptId)
+        .or(
+          `image_url.in.(${imageUrls.map((u) => `"${u}"`).join(',')}),additional_image_urls.ov.{${imageUrls.map((u) => `"${u}"`).join(',')}}`
+        );
+      const stillUsed = new Set(
+        (sharing ?? []).flatMap((r) => [r.image_url, ...r.additional_image_urls])
+      );
 
+      // URL format: https://xxx.supabase.co/storage/v1/object/public/receipt-images/user_id/filename.jpg
+      // If we can't tell which photos are shared, keep them all
+      const filePaths = (sharingError ? [] : imageUrls)
+        .filter((url) => !stillUsed.has(url))
+        .map((url) => url.split('/receipt-images/')[1])
+        .filter(Boolean);
+
+      if (filePaths.length > 0) {
         const { error: storageError } = await supabase.storage
           .from('receipt-images')
-          .remove([filePath]);
+          .remove(filePaths);
 
         if (storageError) {
-          console.error('Error deleting image from storage:', storageError);
+          console.error('Error deleting images from storage:', storageError);
           // Continue with receipt deletion even if image deletion fails
         }
       }
