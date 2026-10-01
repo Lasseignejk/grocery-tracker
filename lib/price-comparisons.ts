@@ -2,7 +2,13 @@
 // regular prices are kept apart: a one-off sale price says little about
 // what the item will cost next time, so "best price" only compares
 // regular prices.
-import { capitalizeWords, type Product, type Purchase } from '@/lib/items';
+import {
+  capitalizeWords,
+  splitBySize,
+  weightOf,
+  type Product,
+  type Purchase,
+} from '@/lib/items';
 
 export interface StorePrice {
   store_name: string;
@@ -24,6 +30,9 @@ export interface PriceComparisonEntry {
   generic_name: string | null;
   brand: string | null;
   variant: string | null;
+  sizeLabel: string | null;
+  // 'lb' when prices are per lb rather than per item
+  priceUnit: 'lb' | null;
   stores: StorePrice[]; // cheapest regular price first, sale-only stores last
   // Set when at least two stores have a regular price to compare
   bestRegular: { store_name: string; price: number } | null;
@@ -32,11 +41,21 @@ export interface PriceComparisonEntry {
   lowestPaid: { store_name: string; price: number; on_sale: boolean };
 }
 
-// Price for one unit, so buying two at once doesn't double the price
+// Price per lb for items sold by weight, otherwise price for one item, so
+// buying two at once doesn't double the price
 export function unitPrice(purchase: Purchase): number {
+  const weight = weightOf(purchase);
+  if (weight) return purchase.total_price / weight;
   const quantity =
     purchase.quantity && purchase.quantity > 0 ? purchase.quantity : 1;
   return purchase.total_price / quantity;
+}
+
+// 'lb' when every purchase was sold by weight, so prices are per lb
+export function priceUnit(purchases: Purchase[]): 'lb' | null {
+  return purchases.length > 0 && purchases.every((p) => weightOf(p) !== null)
+    ? 'lb'
+    : null;
 }
 
 function average(values: number[]): number | null {
@@ -58,7 +77,8 @@ function brandsOf(purchases: Purchase[]): string[] {
 
 /**
  * Pools products by generic name alone ("cream cheese"), across every brand
- * and variant, so store brands can be compared with name brands.
+ * and variant, so store brands can be compared with name brands. Package
+ * sizes are still kept apart, like they are for single products.
  */
 export function groupByItemType(products: Product[]): Product[] {
   const byType = new Map<string, Product[]>();
@@ -69,28 +89,37 @@ export function groupByItemType(products: Product[]): Product[] {
     else byType.set(product.generic_name, [product]);
   }
 
-  return Array.from(byType, ([genericName, group]) => {
-    const purchases = group
-      .flatMap((p) => p.purchases)
-      .sort((a, b) =>
-        (b.purchase_date ?? '').localeCompare(a.purchase_date ?? '')
-      );
-    const totalSpent = purchases.reduce((sum, p) => sum + p.total_price, 0);
-    return {
-      key: `type:${genericName}`,
-      brand: null,
-      generic_name: genericName,
-      variant: null,
-      name: capitalizeWords(genericName),
-      category: group[0].category,
-      purchases,
-      totalSpent,
-      avgPrice: totalSpent / purchases.length,
-      stores: Array.from(new Set(purchases.map((p) => p.store_name))),
-      lastPurchased: purchases[0]?.purchase_date ?? null,
-      receiptTexts: group.flatMap((p) => p.receiptTexts),
-    };
-  });
+  return Array.from(byType).flatMap(([genericName, group]) =>
+    Array.from(
+      splitBySize(group.flatMap((p) => p.purchases)),
+      ([sizeLabel, sized]) => {
+        const purchases = sized.sort((a, b) =>
+          (b.purchase_date ?? '').localeCompare(a.purchase_date ?? '')
+        );
+        const totalSpent = purchases.reduce(
+          (sum, p) => sum + p.total_price,
+          0
+        );
+        const baseKey = `type:${genericName}`;
+        return {
+          key: sizeLabel ? `${baseKey}|${sizeLabel}` : baseKey,
+          baseKey,
+          brand: null,
+          generic_name: genericName,
+          variant: null,
+          sizeLabel,
+          name: capitalizeWords(genericName),
+          category: group[0].category,
+          purchases,
+          totalSpent,
+          avgPrice: totalSpent / purchases.length,
+          stores: Array.from(new Set(purchases.map((p) => p.store_name))),
+          lastPurchased: purchases[0]?.purchase_date ?? null,
+          receiptTexts: group.flatMap((p) => p.receiptTexts),
+        };
+      }
+    )
+  );
 }
 
 function purchaseCount(entry: PriceComparisonEntry): number {
@@ -153,6 +182,8 @@ export function buildPriceComparisons(
         generic_name: product.generic_name,
         brand: product.brand,
         variant: product.variant,
+        sizeLabel: product.sizeLabel,
+        priceUnit: priceUnit(product.purchases),
         stores,
         bestRegular,
         regularSavings,

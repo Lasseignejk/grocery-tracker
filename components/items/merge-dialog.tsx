@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import AutocompleteInput from '@/components/ui/autocomplete-input';
 import { CATEGORIES } from '@/lib/categories';
 import { getErrorMessage } from '@/lib/errors';
-import { capitalizeWords, type Product } from '@/lib/items';
+import { capitalizeWords, describeProduct, type Product } from '@/lib/items';
 
 export interface FieldSuggestions {
   brands: string[];
@@ -17,20 +17,16 @@ export interface FieldSuggestions {
 interface MergeDialogProps {
   // One product means "edit"; two or more means "merge"
   products: Product[];
+  // Other sizes of the same products; renaming is by name, so they change too
+  otherSizes?: Product[];
   suggestions: FieldSuggestions;
   onClose: () => void;
   onMerged: () => void;
 }
 
-function describe(product: Product): string {
-  return [product.brand, product.generic_name, product.variant]
-    .filter(Boolean)
-    .map(capitalizeWords)
-    .join(' · ');
-}
-
 export default function MergeDialog({
   products,
+  otherSizes = [],
   suggestions,
   onClose,
   onMerged,
@@ -66,7 +62,10 @@ export default function MergeDialog({
     dialogRef.current?.showModal();
   }, []);
 
-  const purchaseCount = products.reduce((n, p) => n + p.purchases.length, 0);
+  const purchaseCount = [...products, ...otherSizes].reduce(
+    (n, p) => n + p.purchases.length,
+    0
+  );
 
   const keepName = (product: Product) => {
     setKeepKey(product.key);
@@ -140,6 +139,13 @@ export default function MergeDialog({
             Updates {purchaseCount} purchase{purchaseCount === 1 ? '' : 's'}.
             Future receipts will be renamed to match.
           </p>
+          {otherSizes.length > 0 && (
+            <p className="mt-1 text-sm text-gray-600">
+              Includes other sizes (
+              {otherSizes.map((p) => p.sizeLabel).join(', ')}), which stay
+              separate by size.
+            </p>
+          )}
         </div>
 
         <div className="space-y-6 overflow-y-auto px-6 py-4">
@@ -168,7 +174,7 @@ export default function MergeDialog({
                     <span className="flex-1">
                       <span className="block font-medium">{product.name}</span>
                       <span className="block text-xs text-gray-500">
-                        {describe(product)}
+                        {describeProduct(product)}
                       </span>
                     </span>
                     <span className="text-sm text-gray-500">

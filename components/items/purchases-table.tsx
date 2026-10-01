@@ -4,9 +4,9 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import BulkEditDialog from '@/components/items/bulk-edit-dialog';
 import {
+  assignProducts,
   capitalizeWords,
   formatPurchaseDate,
-  productKey,
   type ItemLine,
 } from '@/lib/items';
 
@@ -111,15 +111,15 @@ export default function PurchasesTable({
       .map(([name]) => name);
   }, [lines]);
 
+  const productOf = useMemo(() => assignProducts(lines), [lines]);
+
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return lines
       .filter(
         (line) =>
           (!store || storeOf(line) === store) &&
-          (!product ||
-            productKey(line.brand, line.generic_name, line.variant) ===
-              product) &&
+          (!product || productOf.get(line.id)?.key === product) &&
           (!missingSize || (!line.size && !line.unit)) &&
           (!q || matches(line, q))
       )
@@ -127,7 +127,7 @@ export default function PurchasesTable({
         const result = compare(a, b, sort.key);
         return sort.desc ? -result : result;
       });
-  }, [lines, query, store, product, missingSize, sort]);
+  }, [lines, productOf, query, store, product, missingSize, sort]);
 
   const selectedLines = lines.filter((line) => selected.has(line.id));
   const allVisibleSelected =

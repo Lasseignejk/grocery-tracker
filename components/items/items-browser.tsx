@@ -6,7 +6,7 @@ import MergeDialog, { type FieldSuggestions } from '@/components/items/merge-dia
 import PurchaseList from '@/components/items/purchase-list';
 import SizeEditor from '@/components/items/size-editor';
 import {
-  capitalizeWords,
+  describeProduct,
   formatPurchaseDate,
   type DuplicateSuggestion,
   type Product,
@@ -20,13 +20,6 @@ interface ItemsBrowserProps {
 type SortKey = 'most-bought' | 'most-spent' | 'recent' | 'name';
 
 const PAGE_SIZE = 50;
-
-function describe(product: Product): string {
-  return [product.brand, product.generic_name, product.variant]
-    .filter(Boolean)
-    .map(capitalizeWords)
-    .join(' · ');
-}
 
 function matches(product: Product, query: string): boolean {
   return [
@@ -132,6 +125,14 @@ export default function ItemsBrowser({ products, duplicates }: ItemsBrowserProps
       return next;
     });
   };
+
+  // Sizes of the dialog's products that weren't picked but share their name
+  const otherSizes = useMemo(() => {
+    if (!dialogProducts) return [];
+    const keys = new Set(dialogProducts.map((p) => p.key));
+    const bases = new Set(dialogProducts.map((p) => p.baseKey));
+    return products.filter((p) => bases.has(p.baseKey) && !keys.has(p.key));
+  }, [dialogProducts, products]);
 
   const openDuplicate = (suggestion: DuplicateSuggestion) => {
     const found = suggestion.productKeys
@@ -284,7 +285,7 @@ export default function ItemsBrowser({ products, duplicates }: ItemsBrowserProps
                           {product.name}
                         </span>
                         <span className="block truncate text-xs text-gray-500">
-                          {describe(product)}
+                          {describeProduct(product)}
                         </span>
                       </span>
                       <span className="w-20 text-sm text-gray-600">
@@ -388,6 +389,7 @@ export default function ItemsBrowser({ products, duplicates }: ItemsBrowserProps
       {dialogProducts && (
         <MergeDialog
           products={dialogProducts}
+          otherSizes={otherSizes}
           suggestions={suggestions}
           onClose={() => setDialogProducts(null)}
           onMerged={() => {

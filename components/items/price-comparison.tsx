@@ -49,8 +49,8 @@ export default function PriceComparison({
         {byType
           ? 'Compare the same kind of item across stores, whatever the brand. '
           : 'Compare the exact same product across stores. '}
-        Prices are per item, and sale prices are shown separately from regular
-        prices.
+        Prices are per item (per lb for items sold by weight), and sale prices
+        are shown separately from regular prices.
       </p>
 
       <div className="space-y-3">
@@ -58,6 +58,8 @@ export default function PriceComparison({
           const itemKey = comparison.key;
           const isExpanded = expandedItem === itemKey;
           const { bestRegular, regularSavings, lowestPaid } = comparison;
+          // Items sold by weight are compared per lb
+          const per = comparison.priceUnit ? `/${comparison.priceUnit}` : '';
           const storesWithRegular = comparison.stores.filter(
             (s) => s.regular_price !== null
           );
@@ -93,12 +95,18 @@ export default function PriceComparison({
                         {capitalizeWords(comparison.variant)}
                       </span>
                     )}
+                    {comparison.sizeLabel && (
+                      <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs font-normal text-gray-600">
+                        {comparison.sizeLabel}
+                      </span>
+                    )}
                   </div>
                   <div className="text-sm text-gray-500 mt-1">
                     Found at {comparison.stores.length} stores
                     {bestRegular && regularSavings > 0.5 && (
                       <span className="ml-2 text-green-600 font-medium">
-                        Save ${regularSavings.toFixed(2)} by shopping at{' '}
+                        Save ${regularSavings.toFixed(2)}
+                        {per} by shopping at{' '}
                         {bestRegular.store_name}
                       </span>
                     )}
@@ -118,6 +126,7 @@ export default function PriceComparison({
                         </div>
                         <div className="text-lg font-bold text-green-600">
                           ${bestRegular.price.toFixed(2)}
+                          {per}
                         </div>
                       </>
                     ) : (
@@ -131,6 +140,7 @@ export default function PriceComparison({
                           }`}
                         >
                           ${lowestPaid.price.toFixed(2)}
+                          {per}
                           {lowestPaid.on_sale && (
                             <span className="ml-1 text-xs font-medium">
                               sale
@@ -229,6 +239,7 @@ export default function PriceComparison({
                               {store.regular_price !== null ? (
                                 <div className="text-lg font-semibold">
                                   ${store.regular_price.toFixed(2)}
+                                  {per}
                                 </div>
                               ) : (
                                 <div className="text-sm text-gray-500">
@@ -238,11 +249,13 @@ export default function PriceComparison({
                               {priceVsBest > 0 && (
                                 <div className="text-xs text-red-600">
                                   +${priceVsBest.toFixed(2)}
+                                  {per}
                                 </div>
                               )}
                               {store.sale_price !== null && (
                                 <div className="text-xs font-medium text-amber-700">
-                                  ${store.sale_price.toFixed(2)} on sale
+                                  ${store.sale_price.toFixed(2)}
+                                  {per} on sale
                                 </div>
                               )}
                             </div>
