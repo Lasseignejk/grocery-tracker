@@ -1,6 +1,8 @@
 import type { createClient } from '@/lib/supabase/server';
 import type { Receipt } from '@/lib/types';
 import { enhanceWithMatches } from '@/lib/receipt-matching';
+import { applyMergeRules } from '@/lib/item-merge-rules';
+import { fetchAll } from '@/lib/supabase/fetch-all';
 import { getErrorMessage } from '@/lib/errors';
 import {
   parseReceiptImages,
@@ -60,6 +62,41 @@ async function logAttempts(
   if (error) console.error('Failed to log API calls:', error);
 }
 
+// Every past item the matcher can learn from, newest first so the most
+// recent purchase wins ties. Repeats of the same printed line at the same
+// store are dropped (keeping the newest) to keep matching fast. A failure
+// here only means no history matching, so it doesn't fail the import.
+async function loadMatchHistory(supabase: SupabaseClient, userId: string) {
+  try {
+    const rows = await fetchAll((from, to) =>
+      supabase
+        .from('receipt_items')
+        .select(
+          'receipt_text, generic_name, brand, variant, size, unit, category, receipts!inner(user_id, store_name)'
+        )
+        .eq('receipts.user_id', userId)
+        .not('receipt_text', 'is', null)
+        .order('created_at', { ascending: false })
+        .order('id')
+        .range(from, to)
+    );
+
+    const seen = new Set<string>();
+    return rows.flatMap(({ receipts, ...item }) => {
+      const key = JSON.stringify([
+        item.receipt_text?.trim().toLowerCase(),
+        receipts.store_name?.trim().toLowerCase(),
+      ]);
+      if (seen.has(key)) return [];
+      seen.add(key);
+      return [{ ...item, store_name: receipts.store_name }];
+    });
+  } catch (error) {
+    console.error('Failed to load item history for matching:', error);
+    return [];
+  }
+}
+
 // Parses all of a receipt's photos and replaces its details and items with
 // the result. Throws (after logging) if parsing or saving fails, leaving the
 // receipt's existing items untouched.
@@ -89,20 +126,32 @@ export async function parseAndSaveReceipt(
     }
 
     // Fill in missing brand/size/etc. from items the user has bought before
-    const { data: historicalItems } = await supabase
-      .from('receipt_items')
-      .select(
-        'receipt_text, generic_name, brand, variant, size, unit, category, receipts!inner(user_id)'
-      )
-      .eq('receipts.user_id', userId)
-      .not('receipt_text', 'is', null)
-      .limit(500);
+    const historicalItems = await loadMatchHistory(supabase, userId);
 
     let items = parsedData.items;
-    if (historicalItems && historicalItems.length > 0) {
-      const enhanced = enhanceWithMatches(items, historicalItems);
+    if (historicalItems.length > 0) {
+      const enhanced = enhanceWithMatches(
+        items,
+        historicalItems,
+        parsedData.store_name
+      );
       items = enhanced.items;
       itemsEnhanced = enhanced.enhancedCount;
+    }
+
+    // Rename items the user has merged before. This runs last so a merge
+    // rule has the final say over both the AI and the history matching.
+    const { data: mergeRules, error: rulesError } = await supabase
+      .from('item_merge_rules')
+      .select('*')
+      .eq('user_id', userId);
+
+    if (rulesError) {
+      console.error('Failed to load merge rules:', rulesError);
+    } else if (mergeRules.length > 0) {
+      const renamed = applyMergeRules(items, mergeRules);
+      items = renamed.items;
+      console.log(`Merge rules renamed ${renamed.appliedCount} items`);
     }
 
     // Update receipt with parsed data. If the date isn't readable, keep the

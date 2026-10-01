@@ -119,7 +119,10 @@ export default function EditItem({ item }: EditItemProps) {
 
   if (!isEditing) {
     return (
-      <div className="flex justify-between items-start p-3 border rounded-lg hover:bg-gray-50 transition-colors group">
+      <div
+        id={`item-${item.id}`}
+        className="flex justify-between items-start p-3 border rounded-lg hover:bg-gray-50 transition-colors group scroll-mt-24 target:ring-2 target:ring-amber-400 target:bg-amber-50"
+      >
         <div className="flex-1">
           <div className="flex items-center gap-2 flex-wrap">
             <p className="font-medium">{item.item_name}</p>

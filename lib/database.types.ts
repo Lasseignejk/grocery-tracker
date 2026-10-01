@@ -97,6 +97,51 @@ export type Database = {
           },
         ]
       }
+      item_merge_rules: {
+        Row: {
+          created_at: string
+          id: string
+          match_brand: string | null
+          match_generic_name: string | null
+          match_receipt_text: string | null
+          match_type: string
+          match_variant: string | null
+          target_brand: string | null
+          target_generic_name: string | null
+          target_item_name: string
+          target_variant: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          match_brand?: string | null
+          match_generic_name?: string | null
+          match_receipt_text?: string | null
+          match_type: string
+          match_variant?: string | null
+          target_brand?: string | null
+          target_generic_name?: string | null
+          target_item_name: string
+          target_variant?: string | null
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          match_brand?: string | null
+          match_generic_name?: string | null
+          match_receipt_text?: string | null
+          match_type?: string
+          match_variant?: string | null
+          target_brand?: string | null
+          target_generic_name?: string | null
+          target_item_name?: string
+          target_variant?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       receipt_items: {
         Row: {
           brand: string | null
@@ -232,6 +277,10 @@ export type Database = {
     Functions: {
       calculate_gpt4o_cost: {
         Args: { input_tokens: number; output_tokens: number }
+        Returns: number
+      }
+      merge_items: {
+        Args: { remember_texts?: string[]; sources: Json; target: Json }
         Returns: number
       }
       normalize_store_name: { Args: { store_name: string }; Returns: string }

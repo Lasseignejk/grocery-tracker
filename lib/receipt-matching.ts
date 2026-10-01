@@ -1,4 +1,5 @@
 interface MatchCandidate {
+  store_name: string | null;
   generic_name: string | null;
   brand: string | null;
   variant: string | null;
@@ -112,15 +113,30 @@ export function findBestMatch(
   return bestMatch;
 }
 
+// Compares store names loosely so "ALDI" and "Aldi" count as the same store
+function normalizeStore(name: string | null): string {
+  return (name ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
 /**
  * Enhance parsed items with data from historical matches
  * Returns enhanced items AND count of how many were enhanced
+ *
+ * Brand, size, and unit only come from past purchases at the same store,
+ * since store brands and package sizes differ between stores (otherwise
+ * Aldi's "Sour Cream" can pick up Food Lion's brand). Generic name and
+ * category mean the same thing everywhere, so any store's history is used.
  */
 export function enhanceWithMatches<T extends ParsedItem>(
   parsedItems: T[],
-  historicalItems: MatchCandidate[]
+  historicalItems: MatchCandidate[],
+  storeName: string | null
 ): { items: T[]; enhancedCount: number } {
   let enhancedCount = 0;
+  const store = normalizeStore(storeName);
+  const sameStoreItems = store
+    ? historicalItems.filter((h) => normalizeStore(h.store_name) === store)
+    : [];
 
   const items = parsedItems.map((item) => {
     // Only try to match if we're missing key fields
@@ -133,19 +149,20 @@ export function enhanceWithMatches<T extends ParsedItem>(
 
     // Find best match from historical items
     const match = findBestMatch(item.receipt_text, historicalItems);
+    const storeMatch = findBestMatch(item.receipt_text, sameStoreItems);
 
-    if (!match) {
+    if (!match && !storeMatch) {
       console.log(`No match found for ${item.receipt_text}`);
       return item;
     }
 
     // Check if we're actually adding any new data
     const willEnhance =
-      (!item.generic_name && match.generic_name) ||
-      (!item.brand && match.brand) ||
-      (!item.size && match.size) ||
-      (!item.unit && match.unit) ||
-      (!item.category && match.category);
+      (!item.generic_name && match?.generic_name) ||
+      (!item.brand && storeMatch?.brand) ||
+      (!item.size && storeMatch?.size) ||
+      (!item.unit && storeMatch?.unit) ||
+      (!item.category && match?.category);
 
     if (willEnhance) {
       console.log(`Will enhance!`);
@@ -156,11 +173,11 @@ export function enhanceWithMatches<T extends ParsedItem>(
     // Merge matched data with parsed data (prefer parsed data when available)
     return {
       ...item,
-      generic_name: item.generic_name || match.generic_name,
-      brand: item.brand || match.brand,
-      size: item.size || match.size,
-      unit: item.unit || match.unit,
-      category: item.category || match.category,
+      generic_name: item.generic_name || match?.generic_name || null,
+      brand: item.brand || storeMatch?.brand || null,
+      size: item.size || storeMatch?.size || null,
+      unit: item.unit || storeMatch?.unit || null,
+      category: item.category || match?.category || null,
     } as T;
   });
 
