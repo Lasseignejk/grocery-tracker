@@ -9,6 +9,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
+import { truncateLabel } from '@/lib/chart-helpers';
 
 interface SpendingByStoreProps {
   data: Array<{
@@ -33,11 +34,19 @@ export default function SpendingByStore({ data }: SpendingByStoreProps) {
   return (
     <div className="bg-white rounded-lg shadow p-6">
       <h3 className="text-lg font-semibold mb-4">Spending by Store</h3>
-      <ResponsiveContainer width="100%" height={300}>
-        <BarChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="store_name" />
-          <YAxis />
+      {/* Horizontal bars so every store name gets its own readable row */}
+      <ResponsiveContainer width="100%" height={Math.max(200, data.length * 36)}>
+        <BarChart data={data} layout="vertical" margin={{ left: 8, right: 16 }}>
+          <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+          <XAxis type="number" tickFormatter={(value) => `$${value}`} />
+          <YAxis
+            type="category"
+            dataKey="store_name"
+            width={130}
+            interval={0}
+            tick={{ fontSize: 12 }}
+            tickFormatter={(name: string) => truncateLabel(name)}
+          />
           <Tooltip
             formatter={(value) => `$${Number(value).toFixed(2)}`}
             labelFormatter={(label) => `Store: ${label}`}

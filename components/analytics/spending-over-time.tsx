@@ -9,24 +9,13 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
+import { formatMonthForDisplay } from '@/lib/chart-helpers';
 
 interface SpendingOverTimeProps {
   data: Array<{
-    date: string;
+    month: string; // YYYY-MM
     total: number;
   }>;
-}
-
-// Helper function to format date for display (handles timezone properly)
-function formatDateForDisplay(dateString: string): string {
-  // Parse as local date (not UTC)
-  const [year, month, day] = dateString.split('-').map(Number);
-  const date = new Date(year, month - 1, day); // month is 0-indexed
-
-  return date.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-  });
 }
 
 export default function SpendingOverTime({ data }: SpendingOverTimeProps) {
@@ -43,7 +32,7 @@ export default function SpendingOverTime({ data }: SpendingOverTimeProps) {
 
   const chartData = data.map((item) => ({
     ...item,
-    displayDate: formatDateForDisplay(item.date),
+    displayMonth: formatMonthForDisplay(item.month),
   }));
 
   return (
@@ -52,11 +41,11 @@ export default function SpendingOverTime({ data }: SpendingOverTimeProps) {
       <ResponsiveContainer width="100%" height={300}>
         <LineChart data={chartData}>
           <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="displayDate" />
+          <XAxis dataKey="displayMonth" />
           <YAxis />
           <Tooltip
             formatter={(value) => `$${Number(value).toFixed(2)}`}
-            labelFormatter={(label) => `Date: ${label}`}
+            labelFormatter={(label) => `Month: ${label}`}
           />
           <Line
             type="monotone"

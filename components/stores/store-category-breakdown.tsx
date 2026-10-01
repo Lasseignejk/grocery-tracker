@@ -7,6 +7,7 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from 'recharts';
+import { CATEGORY_COLORS } from '@/lib/chart-helpers';
 
 interface StoreCategoryBreakdownProps {
   data: Array<{
@@ -14,18 +15,6 @@ interface StoreCategoryBreakdownProps {
     total: number;
   }>;
 }
-
-const COLORS = [
-  '#3b82f6', // blue
-  '#10b981', // green
-  '#f59e0b', // amber
-  '#ef4444', // red
-  '#8b5cf6', // purple
-  '#ec4899', // pink
-  '#14b8a6', // teal
-  '#f97316', // orange
-  '#6366f1', // indigo
-];
 
 export default function StoreCategoryBreakdown({
   data,
@@ -62,22 +51,24 @@ export default function StoreCategoryBreakdown({
             data={chartData}
             cx="50%"
             cy="50%"
-            labelLine={false}
-            label={({ name, percent }) =>
-              `${name} ${(Number(percent ?? 0) * 100).toFixed(0)}%`
-            }
-            outerRadius={80}
+            outerRadius={110}
             fill="#8884d8"
             dataKey="total"
           >
             {chartData.map((entry, index) => (
               <Cell
                 key={`cell-${index}`}
-                fill={COLORS[index % COLORS.length]}
+                fill={CATEGORY_COLORS[index % CATEGORY_COLORS.length]}
               />
             ))}
           </Pie>
-          <Tooltip formatter={(value) => `$${Number(value).toFixed(2)}`} />
+          <Tooltip
+            formatter={(value) => {
+              const amount = Number(value);
+              const percent = total > 0 ? (amount / total) * 100 : 0;
+              return `$${amount.toFixed(2)} (${percent.toFixed(0)}%)`;
+            }}
+          />
         </PieChart>
       </ResponsiveContainer>
 
@@ -94,7 +85,10 @@ export default function StoreCategoryBreakdown({
               <div className="flex items-center gap-2 flex-1">
                 <div
                   className="w-3 h-3 rounded-full flex-shrink-0"
-                  style={{ backgroundColor: COLORS[index % COLORS.length] }}
+                  style={{
+                    backgroundColor:
+                      CATEGORY_COLORS[index % CATEGORY_COLORS.length],
+                  }}
                 />
                 <span className="text-sm text-gray-700">{cat.name}</span>
               </div>

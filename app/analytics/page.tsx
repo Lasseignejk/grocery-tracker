@@ -121,19 +121,19 @@ export default async function AnalyticsPage() {
         .sort((a, b) => b.total - a.total)
     : [];
 
-  // Spending over time
+  // Spending over time, grouped by month (YYYY-MM)
   const spendingOverTime = receipts
     ? Object.entries(
         receipts.reduce((acc, r) => {
           // Receipts without a readable date can't be placed on the timeline
           if (!r.purchase_date) return acc;
-          acc[r.purchase_date] =
-            (acc[r.purchase_date] || 0) + (r.total_amount || 0);
+          const month = r.purchase_date.slice(0, 7);
+          acc[month] = (acc[month] || 0) + (r.total_amount || 0);
           return acc;
         }, {} as Record<string, number>)
       )
-        .map(([date, total]) => ({ date, total }))
-        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+        .map(([month, total]) => ({ month, total }))
+        .sort((a, b) => a.month.localeCompare(b.month))
     : [];
 
   // Group items by brand

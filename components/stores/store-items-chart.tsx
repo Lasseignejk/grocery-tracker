@@ -9,6 +9,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
+import { truncateLabel } from '@/lib/chart-helpers';
 
 interface StoreItemsChartProps {
   items: Array<{
@@ -41,15 +42,25 @@ export default function StoreItemsChart({ items }: StoreItemsChartProps) {
   return (
     <div className="bg-white rounded-lg shadow p-6">
       <h3 className="text-lg font-semibold mb-4">Most Purchased Items</h3>
-      <ResponsiveContainer width="100%" height={300}>
-        <BarChart data={chartData} layout="vertical">
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis type="number" />
+      {/* Height grows with the item count so every label gets its own row */}
+      <ResponsiveContainer
+        width="100%"
+        height={Math.max(200, chartData.length * 36)}
+      >
+        <BarChart
+          data={chartData}
+          layout="vertical"
+          margin={{ left: 8, right: 16 }}
+        >
+          <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+          <XAxis type="number" allowDecimals={false} />
           <YAxis
             type="category"
             dataKey="displayName"
             width={150}
+            interval={0}
             tick={{ fontSize: 12 }}
+            tickFormatter={(name: string) => truncateLabel(name, 20)}
           />
           <Tooltip
             formatter={(value) => [`${value} purchases`, 'Count']}

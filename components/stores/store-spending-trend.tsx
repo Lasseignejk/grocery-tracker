@@ -9,6 +9,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
+import { formatMonthForDisplay } from '@/lib/chart-helpers';
 
 interface StoreSpendingTrendProps {
   data: Array<{
@@ -16,17 +17,6 @@ interface StoreSpendingTrendProps {
     total: number;
   }>;
   storeName: string;
-}
-
-// Helper function to format date for display (handles timezone properly)
-function formatDateForDisplay(dateString: string): string {
-  const [year, month, day] = dateString.split('-').map(Number);
-  const date = new Date(year, month - 1, day); // month is 0-indexed
-
-  return date.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-  });
 }
 
 export default function StoreSpendingTrend({
@@ -46,10 +36,20 @@ export default function StoreSpendingTrend({
     );
   }
 
-  const chartData = data.map((item) => ({
-    ...item,
-    displayDate: formatDateForDisplay(item.date),
-  }));
+  // Stats below are per visit, but the chart groups visits by month (YYYY-MM)
+  const monthlyTotals = data.reduce((acc, item) => {
+    const month = item.date.slice(0, 7);
+    acc[month] = (acc[month] || 0) + item.total;
+    return acc;
+  }, {} as Record<string, number>);
+
+  const chartData = Object.entries(monthlyTotals)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, total]) => ({
+      month,
+      total,
+      displayMonth: formatMonthForDisplay(month),
+    }));
 
   // Calculate some stats
   const totalSpent = data.reduce((sum, item) => sum + item.total, 0);
@@ -93,11 +93,11 @@ export default function StoreSpendingTrend({
       <ResponsiveContainer width="100%" height={300}>
         <LineChart data={chartData}>
           <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="displayDate" />
+          <XAxis dataKey="displayMonth" />
           <YAxis />
           <Tooltip
             formatter={(value) => `$${Number(value).toFixed(2)}`}
-            labelFormatter={(label) => `Date: ${label}`}
+            labelFormatter={(label) => `Month: ${label}`}
           />
           <Line
             type="monotone"

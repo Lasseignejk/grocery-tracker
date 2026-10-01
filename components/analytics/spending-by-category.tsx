@@ -7,6 +7,7 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from 'recharts';
+import { CATEGORY_COLORS } from '@/lib/chart-helpers';
 
 interface SpendingByCategoryProps {
   data: Array<{
@@ -14,18 +15,6 @@ interface SpendingByCategoryProps {
     total: number;
   }>;
 }
-
-const COLORS = [
-  '#3b82f6', // blue
-  '#10b981', // green
-  '#f59e0b', // amber
-  '#ef4444', // red
-  '#8b5cf6', // purple
-  '#ec4899', // pink
-  '#14b8a6', // teal
-  '#f97316', // orange
-  '#6366f1', // indigo
-];
 
 export default function SpendingByCategory({ data }: SpendingByCategoryProps) {
   if (!data || data.length === 0) {
@@ -38,6 +27,8 @@ export default function SpendingByCategory({ data }: SpendingByCategoryProps) {
       </div>
     );
   }
+
+  const grandTotal = data.reduce((sum, item) => sum + item.total, 0);
 
   const chartData = data.map((item) => ({
     ...item,
@@ -55,22 +46,24 @@ export default function SpendingByCategory({ data }: SpendingByCategoryProps) {
             data={chartData}
             cx="50%"
             cy="50%"
-            labelLine={false}
-            label={({ name, percent }) =>
-              `${name} ${(Number(percent ?? 0) * 100).toFixed(0)}%`
-            }
-            outerRadius={80}
+            outerRadius={110}
             fill="#8884d8"
             dataKey="total"
           >
             {chartData.map((entry, index) => (
               <Cell
                 key={`cell-${index}`}
-                fill={COLORS[index % COLORS.length]}
+                fill={CATEGORY_COLORS[index % CATEGORY_COLORS.length]}
               />
             ))}
           </Pie>
-          <Tooltip formatter={(value) => `$${Number(value).toFixed(2)}`} />
+          <Tooltip
+            formatter={(value) => {
+              const amount = Number(value);
+              const percent = grandTotal > 0 ? (amount / grandTotal) * 100 : 0;
+              return `$${amount.toFixed(2)} (${percent.toFixed(0)}%)`;
+            }}
+          />
         </PieChart>
       </ResponsiveContainer>
       <div className="mt-4 grid grid-cols-2 gap-2">
@@ -78,7 +71,10 @@ export default function SpendingByCategory({ data }: SpendingByCategoryProps) {
           <div key={cat.category} className="flex items-center gap-2 text-sm">
             <div
               className="w-3 h-3 rounded-full"
-              style={{ backgroundColor: COLORS[index % COLORS.length] }}
+              style={{
+                backgroundColor:
+                  CATEGORY_COLORS[index % CATEGORY_COLORS.length],
+              }}
             />
             <span className="text-gray-600 flex-1">{cat.name}</span>
             <span className="font-semibold">${cat.total.toFixed(2)}</span>
