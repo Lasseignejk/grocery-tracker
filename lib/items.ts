@@ -210,6 +210,11 @@ export function describeProduct(product: {
     .join(' · ');
 }
 
+// Link to a product's detail page
+export function itemHref(key: string): string {
+  return `/items/${encodeURIComponent(key)}`;
+}
+
 export function capitalizeWords(str: string | null | undefined): string {
   if (!str) return '';
   return str

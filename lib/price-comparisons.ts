@@ -126,40 +126,71 @@ function purchaseCount(entry: PriceComparisonEntry): number {
   return entry.stores.reduce((n, s) => n + s.purchase_count, 0);
 }
 
+// Regular and sale prices per store, cheapest regular price first and
+// sale-only stores last
+export function storePrices(purchases: Purchase[]): StorePrice[] {
+  const byStore = new Map<string, Purchase[]>();
+  for (const purchase of purchases) {
+    const list = byStore.get(purchase.store_name);
+    if (list) list.push(purchase);
+    else byStore.set(purchase.store_name, [purchase]);
+  }
+
+  return Array.from(byStore, ([store_name, purchases]) => {
+    const regular = purchases.filter((p) => !p.was_on_sale).map(unitPrice);
+    const sale = purchases.filter((p) => p.was_on_sale).map(unitPrice);
+    return {
+      store_name,
+      brands: brandsOf(purchases),
+      regular_price: average(regular),
+      sale_price: sale.length > 0 ? Math.min(...sale) : null,
+      avg_size: purchases.find((p) => p.size)?.size ?? null,
+      avg_unit: purchases.find((p) => p.unit)?.unit ?? null,
+      purchase_count: purchases.length,
+      sale_count: sale.length,
+      purchases,
+    };
+  }).sort(
+    (a, b) =>
+      (a.regular_price ?? Infinity) - (b.regular_price ?? Infinity) ||
+      (a.sale_price ?? Infinity) - (b.sale_price ?? Infinity)
+  );
+}
+
+export interface PriceTrend {
+  store_name: string;
+  latest: number;
+  earlierAverage: number;
+  percentChange: number;
+}
+
+/**
+ * Compares the latest regular price at each store with the average of the
+ * earlier regular prices there. Needs three regular purchases at a store,
+ * and only reports changes of 5% or more.
+ */
+export function priceTrends(stores: StorePrice[]): PriceTrend[] {
+  return stores.flatMap((store) => {
+    const regular = store.purchases
+      .filter((p) => !p.was_on_sale && p.purchase_date)
+      .sort((a, b) => a.purchase_date!.localeCompare(b.purchase_date!))
+      .map(unitPrice);
+    if (regular.length < 3) return [];
+    const latest = regular.at(-1)!;
+    const earlierAverage = average(regular.slice(0, -1))!;
+    const percentChange = ((latest - earlierAverage) / earlierAverage) * 100;
+    return Math.abs(percentChange) >= 5
+      ? [{ store_name: store.store_name, latest, earlierAverage, percentChange }]
+      : [];
+  });
+}
+
 export function buildPriceComparisons(
   products: Product[]
 ): PriceComparisonEntry[] {
   return products
     .map((product) => {
-      const byStore = new Map<string, Purchase[]>();
-      for (const purchase of product.purchases) {
-        const list = byStore.get(purchase.store_name);
-        if (list) list.push(purchase);
-        else byStore.set(purchase.store_name, [purchase]);
-      }
-
-      const stores: StorePrice[] = Array.from(
-        byStore,
-        ([store_name, purchases]) => {
-          const regular = purchases.filter((p) => !p.was_on_sale).map(unitPrice);
-          const sale = purchases.filter((p) => p.was_on_sale).map(unitPrice);
-          return {
-            store_name,
-            brands: brandsOf(purchases),
-            regular_price: average(regular),
-            sale_price: sale.length > 0 ? Math.min(...sale) : null,
-            avg_size: purchases.find((p) => p.size)?.size ?? null,
-            avg_unit: purchases.find((p) => p.unit)?.unit ?? null,
-            purchase_count: purchases.length,
-            sale_count: sale.length,
-            purchases,
-          };
-        }
-      ).sort(
-        (a, b) =>
-          (a.regular_price ?? Infinity) - (b.regular_price ?? Infinity) ||
-          (a.sale_price ?? Infinity) - (b.sale_price ?? Infinity)
-      );
+      const stores = storePrices(product.purchases);
 
       const withRegular = stores.filter((s) => s.regular_price !== null);
       const bestRegular =

@@ -8,6 +8,7 @@ import SizeEditor from '@/components/items/size-editor';
 import {
   describeProduct,
   formatPurchaseDate,
+  itemHref,
   type DuplicateSuggestion,
   type Product,
 } from '@/lib/items';
@@ -308,6 +309,12 @@ export default function ItemsBrowser({ products, duplicates }: ItemsBrowserProps
                         {formatPurchaseDate(product.lastPurchased)}
                       </span>
                     </button>
+                    <Link
+                      href={itemHref(product.key)}
+                      className="rounded px-2 py-1 text-sm text-blue-600 hover:bg-blue-50"
+                    >
+                      Details
+                    </Link>
                     <button
                       onClick={() =>
                         setDialogProducts([byKey.get(product.key) ?? product])
