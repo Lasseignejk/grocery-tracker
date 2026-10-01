@@ -13,14 +13,14 @@ import {
   capitalizeWords,
   describeProduct,
   formatPurchaseDate,
+  priceUnit,
+  unitPrice,
 } from '@/lib/items';
 import { fetchProducts } from '@/lib/items-data';
 import {
   groupByItemType,
   priceTrends,
-  priceUnit,
   storePrices,
-  unitPrice,
 } from '@/lib/price-comparisons';
 
 function uniqueSorted(values: (string | null)[]): string[] {
@@ -69,8 +69,8 @@ export default async function ItemDetailPage({
 
   const unit = priceUnit(product.purchases);
   const per = unit ? `/${unit}` : ' each';
-  const stores = storePrices(product.purchases);
-  const trends = priceTrends(stores);
+  const stores = storePrices(product.purchases, unit);
+  const trends = priceTrends(stores, unit);
   const colorOf = new Map(
     stores.map((store, index) => [
       store.store_name,
@@ -89,7 +89,7 @@ export default async function ItemDetailPage({
       .map((p) => ({
         t: toTime(p.purchase_date!),
         date: p.purchase_date!,
-        price: unitPrice(p),
+        price: unitPrice(p, unit),
         on_sale: p.was_on_sale,
         store_name: store.store_name,
       }))
@@ -162,7 +162,7 @@ export default async function ItemDetailPage({
         <section className="rounded-lg bg-white p-6 shadow">
           <h3 className="text-lg font-semibold">Prices by store</h3>
           <p className="mb-4 text-sm text-gray-600">
-            {unit ? 'Prices are per lb. ' : 'Prices are per item. '}
+            {unit ? `Prices are per ${unit}. ` : 'Prices are per item. '}
             The typical price leaves out sales, which are shown separately.
           </p>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -212,7 +212,7 @@ export default async function ItemDetailPage({
                     )}
                     <dt className="text-gray-600">Last paid</dt>
                     <dd className="text-right">
-                      ${unitPrice(last).toFixed(2)}
+                      ${unitPrice(last, unit).toFixed(2)}
                       {per}
                       <span className="block text-xs text-gray-500">
                         {formatPurchaseDate(last.purchase_date)}

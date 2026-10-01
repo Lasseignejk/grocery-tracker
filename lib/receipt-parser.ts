@@ -153,7 +153,10 @@ PARSING GUIDELINES:
 2. **Item Name**: Clean, readable version with size info expanded
 3. **Brand**: Brand name ONLY for branded products (null for produce)
 4. **Generic Name**: Broad category (singular): "miso", "protein bar", "mushroom"
+   - Cheese is the exception: include the kind of cheese, since that's what gets compared across brands and stores: "cheddar cheese", "pepper jack cheese", "mexican blend cheese" (any mexican/fiesta/taco blend), "mozzarella cheese", "parmesan cheese", "cream cheese"
+   - Never put the form (shredded, sliced, block, grated) in the generic name; it goes in variant
 5. **Variant**: Specific type/flavor: "white", "chocolate peanut butter", "shiitake"
+   - For cheese, the form and flavor: "shredded", "sliced", "block", "spicy, shredded", "extra sharp, block"
 6. **Size and Unit**: Extract package size/measurement
    - Size: The numeric amount ("2", "12", "32", "1.5")
    - Unit: The unit type ("liter", "oz", "lb", "kg", "count", "package", "bottle", "can", "bag")

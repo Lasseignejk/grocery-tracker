@@ -76,12 +76,48 @@ export function productKey(
 }
 
 export const UNKNOWN_SIZE = 'Size unknown';
-export const PER_LB = 'Per lb';
 export const PER_ITEM = 'Per item';
 
-// Sold by weight: the size is how much was weighed, not a package size
-const WEIGHED_UNITS = new Set(['lb', 'lbs', 'pound', 'pounds', 'kg']);
-const LB_PER_KG = 2.20462;
+// Sizes that convert to a common measure, so different package sizes can
+// be compared by price per oz (or per gallon, per lb...). Amounts are in
+// oz for weight and fl oz for volume.
+type MeasureKind = 'weight' | 'volume';
+const MEASURES: Record<string, { kind: MeasureKind; amount: number }> = {
+  oz: { kind: 'weight', amount: 1 },
+  ounce: { kind: 'weight', amount: 1 },
+  ounces: { kind: 'weight', amount: 1 },
+  lb: { kind: 'weight', amount: 16 },
+  lbs: { kind: 'weight', amount: 16 },
+  pound: { kind: 'weight', amount: 16 },
+  pounds: { kind: 'weight', amount: 16 },
+  g: { kind: 'weight', amount: 0.035274 },
+  gram: { kind: 'weight', amount: 0.035274 },
+  grams: { kind: 'weight', amount: 0.035274 },
+  kg: { kind: 'weight', amount: 35.274 },
+  'fl oz': { kind: 'volume', amount: 1 },
+  floz: { kind: 'volume', amount: 1 },
+  ml: { kind: 'volume', amount: 0.033814 },
+  l: { kind: 'volume', amount: 33.814 },
+  liter: { kind: 'volume', amount: 33.814 },
+  liters: { kind: 'volume', amount: 33.814 },
+  litre: { kind: 'volume', amount: 33.814 },
+  cup: { kind: 'volume', amount: 8 },
+  cups: { kind: 'volume', amount: 8 },
+  pint: { kind: 'volume', amount: 16 },
+  quart: { kind: 'volume', amount: 32 },
+  gal: { kind: 'volume', amount: 128 },
+  gallon: { kind: 'volume', amount: 128 },
+  gallons: { kind: 'volume', amount: 128 },
+};
+
+// What prices are shown per, with its size in oz / fl oz
+export type PriceUnit = 'lb' | 'oz' | 'gal' | 'fl oz';
+const PRICE_UNIT_AMOUNT: Record<PriceUnit, number> = {
+  lb: 16,
+  oz: 1,
+  gal: 128,
+  'fl oz': 1,
+};
 
 interface Sized {
   size: string | null;
@@ -89,80 +125,117 @@ interface Sized {
   quantity: number | null;
 }
 
-// Pounds bought, for items sold by weight; null for everything else
-export function weightOf(item: Sized): number | null {
-  const unit = item.unit?.trim().toLowerCase() ?? '';
-  if (!WEIGHED_UNITS.has(unit)) return null;
-  const size = Number(item.size);
-  if (!Number.isFinite(size) || size <= 0) return null;
-  const pounds = unit === 'kg' ? size * LB_PER_KG : size;
-  // Loose produce saves its weight as the quantity too; a different
-  // whole quantity means several bags of that weight (2 × 3 lb onions)
-  const quantity = item.quantity ?? 1;
-  return quantity > 1 && Math.abs(quantity - size) > 0.01
-    ? pounds * quantity
-    : pounds;
+function normalizeUnit(unit: string | null): string {
+  return unit?.trim().toLowerCase() ?? '';
 }
 
-// "1 gallon" for a packaged size; null when there is none or it was weighed
+// Total weight (oz) or volume (fl oz) bought; null when the size is missing
+// or isn't a measure (12 count, 2 package)
+function measureOf(item: Sized): { kind: MeasureKind; amount: number } | null {
+  const measure = MEASURES[normalizeUnit(item.unit)];
+  const size = Number(item.size);
+  if (!measure || !Number.isFinite(size) || size <= 0) return null;
+  // Loose produce saves its weight as the quantity too; a different
+  // whole quantity means several packages of that size (2 × 3 lb onions)
+  const quantity = item.quantity ?? 1;
+  const packages =
+    quantity > 1 && Math.abs(quantity - size) > 0.01 ? quantity : 1;
+  return { kind: measure.kind, amount: size * measure.amount * packages };
+}
+
+/**
+ * The unit to compare these purchases' prices in: per lb or oz when every
+ * one has a weight, per gallon or fl oz when every one has a volume, and
+ * null (per item) otherwise. Bigger units are used when every purchase was
+ * sized in them, so milk reads per gallon and loose produce per lb.
+ */
+export function priceUnit(purchases: Sized[]): PriceUnit | null {
+  const kinds = new Set(purchases.map((p) => measureOf(p)?.kind ?? null));
+  if (purchases.length === 0 || kinds.size !== 1 || kinds.has(null)) {
+    return null;
+  }
+  const units = purchases.map((p) => MEASURES[normalizeUnit(p.unit)].amount);
+  if (kinds.has('weight')) {
+    return units.every((amount) => amount >= 16) ? 'lb' : 'oz';
+  }
+  return units.every((amount) => amount === 128) ? 'gal' : 'fl oz';
+}
+
+// Price per `unit` when given and the purchase has that kind of size,
+// otherwise the price of one item, so buying two doesn't double the price
+export function unitPrice(
+  purchase: Sized & { total_price: number },
+  unit: PriceUnit | null = null
+): number {
+  const measure = unit ? measureOf(purchase) : null;
+  if (unit && measure) {
+    return purchase.total_price / (measure.amount / PRICE_UNIT_AMOUNT[unit]);
+  }
+  const quantity =
+    purchase.quantity && purchase.quantity > 0 ? purchase.quantity : 1;
+  return purchase.total_price / quantity;
+}
+
+// "12 count" for a size that can't be converted to a measure; null when
+// there is none or it can (those are compared per oz instead)
 export function packageSize(
   size: string | null,
   unit: string | null
 ): string | null {
   const trimmed = size?.trim();
   if (!trimmed) return null;
-  const normalizedUnit = unit?.trim().toLowerCase() ?? '';
-  if (WEIGHED_UNITS.has(normalizedUnit)) return null;
+  const normalizedUnit = normalizeUnit(unit);
+  if (MEASURES[normalizedUnit]) return null;
   // "0.50" and "0.5" are the same size
   const number = Number(trimmed);
   const amount = Number.isFinite(number) ? String(number) : trimmed.toLowerCase();
   return [amount, normalizedUnit].filter(Boolean).join(' ');
 }
 
-function groupBy<T>(items: T[], label: (item: T) => string): Map<string, T[]> {
-  const groups = new Map<string, T[]>();
-  for (const item of items) {
-    const key = label(item);
-    const group = groups.get(key);
-    if (group) group.push(item);
-    else groups.set(key, [item]);
-  }
-  return groups;
-}
+const KIND_LABELS: Record<MeasureKind, string> = {
+  weight: 'By weight',
+  volume: 'By volume',
+};
 
 /**
  * Splits items of one product so each group has one comparable price.
- * Different package sizes (half gallon vs gallon milk) are kept apart, and
- * items without a size go to "size unknown" so they don't skew either size;
- * with only one known size, unsized items join it. Items bought by weight
- * are priced per lb, so when a product was bought both ways (loose onions
- * and single onions) the weighed ones get their own "per lb" group.
- * A product needing no split comes back as one group under null.
+ * Weights and volumes are compared per unit, so any package size of them
+ * stays together (8 oz and 12 oz bags, half gallon and gallon milk). Sizes
+ * that can't be converted, like 12 vs 18 count eggs, are kept apart; with
+ * only one such size, unsized items join it. Otherwise unsized items get
+ * their own group so they don't skew the per-unit prices. A product needing
+ * no split comes back as one group under null.
  */
 export function splitBySize<T extends Sized>(items: T[]): Map<string | null, T[]> {
-  const weighed = items.filter((item) => weightOf(item) !== null);
-  const rest = items.filter((item) => weightOf(item) === null);
-  const sizes = new Set(
-    rest
-      .map((item) => packageSize(item.size, item.unit))
-      .filter((size): size is string => !!size)
-  );
+  const labelOf = (item: T): string | null => {
+    const measure = measureOf(item);
+    return measure
+      ? KIND_LABELS[measure.kind]
+      : packageSize(item.size, item.unit);
+  };
+  const isMeasure = (label: string) =>
+    Object.values(KIND_LABELS).includes(label);
 
-  if (weighed.length === 0 || rest.length === 0) {
-    if (sizes.size < 2) return new Map([[null, items]]);
-    return groupBy(
-      items,
-      (item) => packageSize(item.size, item.unit) ?? UNKNOWN_SIZE
-    );
+  const labels = new Set(
+    items.map(labelOf).filter((label): label is string => !!label)
+  );
+  const hasUnsized = items.some((item) => !labelOf(item));
+  const [onlyLabel] = labels;
+  if (
+    labels.size === 0 ||
+    (labels.size === 1 && (!hasUnsized || !isMeasure(onlyLabel)))
+  ) {
+    return new Map([[null, items]]);
   }
 
-  const groups = new Map<string | null, T[]>([[PER_LB, weighed]]);
-  const [onlySize] = sizes;
-  const restGroups =
-    sizes.size < 2
-      ? new Map([[onlySize ?? PER_ITEM, rest]])
-      : groupBy(rest, (item) => packageSize(item.size, item.unit) ?? UNKNOWN_SIZE);
-  for (const [label, group] of restGroups) groups.set(label, group);
+  const unsizedLabel = [...labels].every(isMeasure) ? PER_ITEM : UNKNOWN_SIZE;
+  const groups = new Map<string | null, T[]>();
+  for (const item of items) {
+    const label = labelOf(item) ?? unsizedLabel;
+    const group = groups.get(label);
+    if (group) group.push(item);
+    else groups.set(label, [item]);
+  }
   return groups;
 }
 

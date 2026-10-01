@@ -142,7 +142,7 @@ export default function PriceComparison({
           {visible.length} item{visible.length === 1 ? '' : 's'} bought at 2+
           stores
           {byType ? ', pooled across brands' : ''}. Typical prices leave out
-          sales; items sold by weight are compared per lb.
+          sales; items with a weight or volume are compared per lb, oz or gallon.
         </p>
       </div>
 
@@ -158,7 +158,7 @@ export default function PriceComparison({
             const itemKey = comparison.key;
             const isExpanded = expandedItem === itemKey;
             const { bestRegular, regularSavings, lowestPaid } = comparison;
-            // Items sold by weight are compared per lb
+            // Items with a weight or volume are compared per lb, oz, gal...
             const per = comparison.priceUnit ? `/${comparison.priceUnit}` : '';
             const storesWithRegular = comparison.stores.filter(
               (s) => s.regular_price !== null
@@ -403,7 +403,7 @@ export default function PriceComparison({
                             <p className="text-sm text-blue-800 mt-1">
                               At regular prices, you could save{' '}
                               <strong>${regularSavings.toFixed(2)}</strong>{' '}
-                              {comparison.priceUnit ? 'per lb' : 'per item'} by
+                              {comparison.priceUnit ? `per ${comparison.priceUnit}` : 'per item'} by
                               buying this at{' '}
                               <strong>{bestRegular.store_name}</strong> instead
                               of {priciestRegular.store_name}.

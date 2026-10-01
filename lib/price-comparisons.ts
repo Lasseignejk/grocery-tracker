@@ -4,8 +4,10 @@
 // regular prices.
 import {
   capitalizeWords,
+  priceUnit,
   splitBySize,
-  weightOf,
+  unitPrice,
+  type PriceUnit,
   type Product,
   type Purchase,
 } from '@/lib/items';
@@ -31,31 +33,14 @@ export interface PriceComparisonEntry {
   brand: string | null;
   variant: string | null;
   sizeLabel: string | null;
-  // 'lb' when prices are per lb rather than per item
-  priceUnit: 'lb' | null;
+  // What prices are per (lb, oz, gal...); null means per item
+  priceUnit: PriceUnit | null;
   stores: StorePrice[]; // cheapest regular price first, sale-only stores last
   // Set when at least two stores have a regular price to compare
   bestRegular: { store_name: string; price: number } | null;
   regularSavings: number;
   // The cheapest price ever paid, at any store, sale or not
   lowestPaid: { store_name: string; price: number; on_sale: boolean };
-}
-
-// Price per lb for items sold by weight, otherwise price for one item, so
-// buying two at once doesn't double the price
-export function unitPrice(purchase: Purchase): number {
-  const weight = weightOf(purchase);
-  if (weight) return purchase.total_price / weight;
-  const quantity =
-    purchase.quantity && purchase.quantity > 0 ? purchase.quantity : 1;
-  return purchase.total_price / quantity;
-}
-
-// 'lb' when every purchase was sold by weight, so prices are per lb
-export function priceUnit(purchases: Purchase[]): 'lb' | null {
-  return purchases.length > 0 && purchases.every((p) => weightOf(p) !== null)
-    ? 'lb'
-    : null;
 }
 
 function average(values: number[]): number | null {
@@ -128,7 +113,11 @@ function purchaseCount(entry: PriceComparisonEntry): number {
 
 // Regular and sale prices per store, cheapest regular price first and
 // sale-only stores last
-export function storePrices(purchases: Purchase[]): StorePrice[] {
+export function storePrices(
+  purchases: Purchase[],
+  unit: PriceUnit | null
+): StorePrice[] {
+  const price = (p: Purchase) => unitPrice(p, unit);
   const byStore = new Map<string, Purchase[]>();
   for (const purchase of purchases) {
     const list = byStore.get(purchase.store_name);
@@ -137,8 +126,8 @@ export function storePrices(purchases: Purchase[]): StorePrice[] {
   }
 
   return Array.from(byStore, ([store_name, purchases]) => {
-    const regular = purchases.filter((p) => !p.was_on_sale).map(unitPrice);
-    const sale = purchases.filter((p) => p.was_on_sale).map(unitPrice);
+    const regular = purchases.filter((p) => !p.was_on_sale).map(price);
+    const sale = purchases.filter((p) => p.was_on_sale).map(price);
     return {
       store_name,
       brands: brandsOf(purchases),
@@ -169,12 +158,15 @@ export interface PriceTrend {
  * earlier regular prices there. Needs three regular purchases at a store,
  * and only reports changes of 5% or more.
  */
-export function priceTrends(stores: StorePrice[]): PriceTrend[] {
+export function priceTrends(
+  stores: StorePrice[],
+  unit: PriceUnit | null
+): PriceTrend[] {
   return stores.flatMap((store) => {
     const regular = store.purchases
       .filter((p) => !p.was_on_sale && p.purchase_date)
       .sort((a, b) => a.purchase_date!.localeCompare(b.purchase_date!))
-      .map(unitPrice);
+      .map((p) => unitPrice(p, unit));
     if (regular.length < 3) return [];
     const latest = regular.at(-1)!;
     const earlierAverage = average(regular.slice(0, -1))!;
@@ -190,7 +182,8 @@ export function buildPriceComparisons(
 ): PriceComparisonEntry[] {
   return products
     .map((product) => {
-      const stores = storePrices(product.purchases);
+      const unit = priceUnit(product.purchases);
+      const stores = storePrices(product.purchases, unit);
 
       const withRegular = stores.filter((s) => s.regular_price !== null);
       const bestRegular =
@@ -205,7 +198,7 @@ export function buildPriceComparisons(
         : 0;
 
       const cheapestPurchase = product.purchases.reduce((min, p) =>
-        unitPrice(p) < unitPrice(min) ? p : min
+        unitPrice(p, unit) < unitPrice(min, unit) ? p : min
       );
 
       return {
@@ -214,13 +207,13 @@ export function buildPriceComparisons(
         brand: product.brand,
         variant: product.variant,
         sizeLabel: product.sizeLabel,
-        priceUnit: priceUnit(product.purchases),
+        priceUnit: unit,
         stores,
         bestRegular,
         regularSavings,
         lowestPaid: {
           store_name: cheapestPurchase.store_name,
-          price: unitPrice(cheapestPurchase),
+          price: unitPrice(cheapestPurchase, unit),
           on_sale: cheapestPurchase.was_on_sale,
         },
       };
